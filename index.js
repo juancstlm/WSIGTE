@@ -7,7 +7,7 @@ const app = express();
 
 const { AUTH_KEY, APPLE_TEAM_ID, MAPKIT_KEY_ID, PORT } = process.env;
 const header = {
-  kid: MAPKIT_KEY_ID,
+  kid: process.env.MAPKIT_KEY_ID,
   typ: 'JWT',
   alg: 'ES256'
 };
@@ -19,14 +19,14 @@ app.get('/token', (req, res, next) => {
   next()
 }, (req, res) => {
   const payload = {
-    iss: APPLE_TEAM_ID,
+    iss: process.env.APPLE_TEAM_ID,
     iat: Date.now() / 1000,
     exp: (Date.now() / 1000) +1800,
   };
 
-  res.send(jwt.sign(payload, AUTH_KEY, { header }));
+  res.send(jwt.sign(payload, process.env.AUTH_KEY, { header }));
 })
 
-app.listen(PORT, () => {
-  console.log(`Server started on port ${PORT}`);
+app.listen(process.env.PORT, () => {
+  console.log(`Server started on port ${process.env.PORT}`);
 });
