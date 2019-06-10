@@ -10,10 +10,10 @@ function showPosition(position) {
 
   // init mapkit
   mapkit.init({
-    authorizationCallback: done => {
-      done(
-        "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IlA3WThWVTVaOU4ifQ.eyJpc3MiOiJCMjdRUjNBVUZKIiwiaWF0IjoxNTYwMTE3NDc1LCJleHAiOjE1NjI3OTU4NzV9.HIjUUQYD_82ztmIDMm6R-nWgkWI4NX6vVPcGqKO6GgWe1pVL3p76fIjoWX4KhLeiobhJ4xxllYHENKNtzbTASg"
-      );
+    authorizationCallback: function(done) {
+      fetch("/token")
+        .then(res => res.text())
+        .then(done);
     }
   });
 
@@ -46,7 +46,7 @@ function showPosition(position) {
     // Place the users location on the map via a MarkerAnnotation
     var userAnnotation = new mapkit.MarkerAnnotation(userCoordinate);
     userAnnotation.color = "#FFFFFF";
-    userAnnotation.glyphText = "🤫";
+    userAnnotation.glyphText = "📍";
     map.addAnnotation(userAnnotation);
 
     // Pick a random place from the list of search results
