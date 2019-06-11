@@ -6,7 +6,7 @@ dotenv.config();
 const app = express();
 
 const { AUTH_KEY, APPLE_TEAM_ID, MAPKIT_KEY_ID, PORT } = process.env;
-console.log("ENV 1" + process.env.APPLE_TEAM_ID)
+
 const header = {
   kid: process.env.MAPKIT_KEY_ID,
   typ: 'JWT',
