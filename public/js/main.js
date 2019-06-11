@@ -17,22 +17,22 @@ function showPosition(position) {
     }
   });
 
-  var userCoordinate = new mapkit.Coordinate(
+  let userCoordinate = new mapkit.Coordinate(
     position.coords.latitude,
     position.coords.longitude
   );
 
-  const span = new mapkit.CoordinateSpan(0.03, 0.03);
+  let span = new mapkit.CoordinateSpan(0.016, 0.016);
 
-  // TODO Fix the region to the search area
-  const region = new mapkit.CoordinateRegion(userCoordinate, span);
-  const map = new mapkit.Map("map", {
+  let region = new mapkit.CoordinateRegion(userCoordinate);
+  let map = new mapkit.Map("map", {
     region,
     showsUserLocationControl: true,
+    showsMapTypeControl: false,
     showsScale: mapkit.FeatureVisibility.Visible
   });
 
-  var search = new mapkit.Search({
+  let search = new mapkit.Search({
     region: map.region
   });
 
@@ -44,9 +44,9 @@ function showPosition(position) {
     }
 
     // Place the users location on the map via a MarkerAnnotation
-    var userAnnotation = new mapkit.MarkerAnnotation(userCoordinate);
-    userAnnotation.color = "#FFFFFF";
-    userAnnotation.glyphText = "📍";
+    let userAnnotation = new mapkit.MarkerAnnotation(userCoordinate);
+    userAnnotation.color = "#f96345";
+    userAnnotation.glyphText = "🏠";
     map.addAnnotation(userAnnotation);
 
     // Pick a random place from the list of search results
@@ -55,30 +55,37 @@ function showPosition(position) {
     let randomPlaceAnnotation = new mapkit.MarkerAnnotation(
       randomPlace.coordinate
     );
-    randomPlaceAnnotation.color = "#2f3a49";
+    randomPlaceAnnotation.color = "#5688d9";
     randomPlaceAnnotation.title = randomPlace.name;
     randomPlaceAnnotation.subtitle = randomPlace.formattedAddress;
 
     // add the annotation to the map
     map.addAnnotation(randomPlaceAnnotation);
 
-    new mapkit.Directions().route(
+    let route = new mapkit.Directions().route(
       {
         origin: userCoordinate,
         destination: randomPlace
       },
       (error, data) => {
-        const polylines = data.routes.map(route => {
-          console.log(route.polyline.points);
+        let polylines = data.routes.map(route => {
           return new mapkit.PolylineOverlay(route.polyline.points, {
             style: new mapkit.Style({
-              lineWidth: 4,
+              lineWidth: 5,
               strokeColor: "#139cc2"
             })
           });
         });
 
-        map.showItems(polylines);
+        map.showItems(polylines, {
+          animate: true,
+          padding: new mapkit.Padding({
+            top: 200,
+            right: 50,
+            bottom: 100,
+            left: 50
+          })
+        });
       }
     );
   });

@@ -1,26 +1,32 @@
-html,
+html {
+  font-family: Rajdhani, sans-serif;
+}
 body {
   margin: 0;
 }
 
 h1 {
   text-align: center;
-  font-family: Helvetica, Arial, sans-serif;
   font-weight: 300;
   position: fixed;
   top: 10px;
   left: 50%;
   transform: translate(-50%, 0);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  backdrop-filter: saturate(180%) blur(20px);
-  background-color: rgba(255, 255, 255, 0.7);
+  background-color: rgba(255, 255, 255);
   z-index: 1;
   padding: 15px;
   margin: 0;
-  border-radius: 15px;
   min-width: 300px;
 }
 a {
   text-decoration: none;
   color: #333;
+}
+@font-face {
+  font-family: Rajdhani;
+  font-style: normal;
+  font-weight: 700;
+  src: local("Rajdhani Bold"), local("Rajdhani-Bold"),
+  url(https://fonts.gstatic.com/s/rajdhani/v5/kcO_Mk7pjy8jlu86STaVz50EAVxt0G0biEntp43Qt6E.ttf)
+  format("truetype");
 }
