@@ -1,5 +1,5 @@
 {
-  "name": "wthsige",
+  "name": "wsigte",
   "version": "1.0.0",
   "description": "Website to randomly pick a place to eat",
   "main": "index.js",
@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/juancstlm/wthsige.git"
+    "url": "git+https://github.com/juancstlm/WSIGTE.git"
   },
   "keywords": [
     "MapkitJS"
@@ -17,9 +17,9 @@
   "author": "Juan Castillo",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/juancstlm/wthsige/issues"
+    "url": "https://github.com/juancstlm/WSIGTE/issues"
   },
-  "homepage": "https://github.com/juancstlm/wthsige#readme",
+  "homepage": "https://github.com/juancstlm/WSIGTE#readme",
   "dependencies": {
     "dotenv": "^8.0.0",
     "express": "^4.17.1",
