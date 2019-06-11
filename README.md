@@ -19,11 +19,11 @@ To view the site visit `http://localhost:3000/`
 
 ## Demo
 If you just want to see the site in action check it out below.
-[https://wthsige.herokuapp.com/](https://wthsige.herokuapp.com/)
+[https://wsigte.herokuapp.com/](https://wsigte.herokuapp.com/)
 
 ## Screenshot
 
-![WSIGTE in browser]()
+![WSIGTE in browser](https://raw.githubusercontent.com/juancstlm/WSIGTE/master/wsigte-2.png?token=ACFZWMCYZ73GMK2WBZJQZOC5BBIGG)
 
 
 # TODO 
