@@ -1,4 +1,4 @@
-#WSIGTE (Where Should I Go To Eat?)
+# WSIGTE (Where Should I Go To Eat?)
 A website that will recommend places to eat based on your location. Built using Node js and Apple's new [MapKit JS](https://developer.apple.com/documentation/mapkitjs) framework. 
 Automatically signs a JWT using [jsonwebtoken](https://github.com/auth0/node-jsonwebtoke).
 
