@@ -24,3 +24,9 @@ If you just want to see the site in action check it out below.
 ## Screenshot
 
 ![WSIGTE in browser]()
+
+
+# TODO 
+* Allow user to enter their own location.
+* Button to pick another result.
+* Loading and UI improvements.
