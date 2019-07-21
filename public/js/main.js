@@ -4,6 +4,7 @@ const geolocation = navigator.geolocation.getCurrentPosition(
   showError
 );
 
+
 // Request the browser for the location of the user
 function showPosition(position) {
   console.log("Position request successful");
@@ -11,7 +12,7 @@ function showPosition(position) {
   // init mapkit
   mapkit.init({
     authorizationCallback: function(done) {
-      fetch("/token")
+      fetch("https://api.wsigte.com/token")
         .then(res => res.text())
         .then(done);
     }
