@@ -1,0 +1,21 @@
+.Locator{
+    height: 100vh;
+    width: 100vw;
+    overflow: scroll;
+    /*maring: 0 auto;*/
+    display: flex;
+    justify-content: center;
+}
+.Locator-message{
+    width: 100%;
+    /*flex-basis: 100%;*/
+    text-transform: uppercase;
+    font-size: 2em;
+}
+.Locator-content{
+    display: flex;
+    max-width: 750px;
+    align-items: center;
+    align-content: center;
+    flex-wrap: wrap;
+}
