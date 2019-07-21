@@ -5,7 +5,7 @@ import './form.css';
 const Form = ({ inputPlaceholder, onSubmit, buttonText }) => {
   const [value, setValue] = useState(null);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = e => {
     e && e.preventDefault();
     onSubmit && onSubmit(value);
   };
@@ -17,7 +17,7 @@ const Form = ({ inputPlaceholder, onSubmit, buttonText }) => {
         type="text"
         name="location"
         placeholder={inputPlaceholder}
-        onChange={(e) => {
+        onChange={e => {
           setValue(e.target.value);
         }}
       />
@@ -26,6 +26,11 @@ const Form = ({ inputPlaceholder, onSubmit, buttonText }) => {
       </button>
     </form>
   );
+};
+
+Form.defaultProps = {
+  inputPlaceholder: 'Enter input here',
+  buttonText: 'Submit',
 };
 
 Form.propTypes = {

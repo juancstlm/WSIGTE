@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import './locator.css';
 import { geolocated } from 'react-geolocated';
+import PropTypes from 'prop-types';
 import Form from '../Form/Form';
-import PropTypes from 'prop';
 
 const statusEnum = {
   LOOKING_FOR_LOCATION: 1,
@@ -17,6 +17,7 @@ const statusEnum = {
   },
 };
 
+// eslint-disable-next-line no-unused-vars
 const Locator = ({ isGeolocationAvailable, coords, positionError }) => {
   const [status, setStatus] = useState(statusEnum.LOOKING_FOR_LOCATION);
 
@@ -53,6 +54,12 @@ const Locator = ({ isGeolocationAvailable, coords, positionError }) => {
       </div>
     </div>
   );
+};
+
+Locator.propTypes = {
+  coords: PropTypes.instanceOf(navigator.geolocation),
+  positionError: PropTypes.object,
+  isGeolocationAvailable: PropTypes.bool,
 };
 
 export default geolocated({
