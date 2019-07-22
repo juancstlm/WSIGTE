@@ -25,6 +25,11 @@
     width: 100%;
     /*display: flex;*/
     /*justify-content: center;*/
+    transition: all ease-in-out .18s ;
+}
+.Form.disabled{
+    opacity: 0;
+    pointer-events: none;
 }
 .Form-button{
     background-color: indigo;
@@ -40,5 +45,8 @@
     font-family: inherit;
 }
 .Form-button:hover{
-
+    /*padding: 12px;*/
+}
+.Form-button:focus{
+    outline: none;
 }

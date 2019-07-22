@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import './locator.css';
 import { geolocated } from 'react-geolocated';
 import PropTypes from 'prop-types';
+import { Redirect } from 'react-router-dom';
+import { connect } from 'react-redux';
 import Form from '../Form/Form';
+import { setResults, setUserCoordinates } from '../../Redux/actions';
 
 const statusEnum = {
   LOOKING_FOR_LOCATION: 1,
@@ -17,18 +20,86 @@ const statusEnum = {
   },
 };
 
+const { mapkit } = window;
+
+const geocoder = new mapkit.Geocoder({
+  language: 'en-US',
+  getsUserLocation: true,
+});
+
 // eslint-disable-next-line no-unused-vars
-const Locator = ({ isGeolocationAvailable, coords, positionError }) => {
+const Locator = ({
+  isGeolocationAvailable,
+  coords,
+  positionError,
+  setResults,
+  setUserCoordinates,
+}) => {
   const [status, setStatus] = useState(statusEnum.LOOKING_FOR_LOCATION);
+  const [redirect, setRedirect] = useState(null);
+
+  const lookForRecommendations = coordinate => {
+    // initialize the search object
+    const search = new mapkit.Search({
+      getsUserLocation: true,
+      coordinate,
+    });
+
+    // perform the search query
+    search.search('Restaurants', (error, data) => {
+      if (error) {
+        console.log('error in search');
+        return;
+      }
+
+      console.log('search data', data);
+      setResults(data);
+    });
+  };
 
   useEffect(() => {
-    coords && setStatus(statusEnum.LOOKING_FOR_PLACES);
+    //
+    geocoder && console.log('geocoder loaded', geocoder);
+    // initiate if the user location is available
+    if (coords) {
+      setStatus(statusEnum.LOOKING_FOR_PLACES);
+      const userCoordinate = new mapkit.Coordinate(
+        coords.latitude,
+        coords.longitude,
+      );
+
+      setUserCoordinates(userCoordinate);
+
+      lookForRecommendations(userCoordinate);
+      // geocoder.reverseLookup(
+      //   new mapkit.Coordinate(coords.latitude, coords.longitude),
+      //   (error, data) => {
+      //     if (error) {
+      //       console.log('error in reverse lookup', error);
+      //     }
+      //     console.log(data);
+      //   },
+      // );
+    }
     positionError && setStatus(statusEnum.NO_PLACES_FOUND);
   }, [coords, positionError]);
 
   const handleFormSubmit = value => {
     console.log('Form submitted ', value);
-    setStatus(statusEnum.LOOKING_FOR_PLACES);
+    setStatus(statusEnum.LOOKING_FOR_LOCATION);
+    geocoder.lookup(value, (error, data) => {
+      if (error) {
+        console.log('Error in geocoder', error);
+        setStatus(statusEnum.NO_PLACES_FOUND);
+      }
+      setStatus(statusEnum.LOOKING_FOR_PLACES);
+      data.results[0] && setUserCoordinates(data.results[0].coordinate);
+      console.log(data);
+    });
+  };
+
+  const navigateTo = () => {
+    return redirect && <Redirect to={redirect} />;
   };
 
   const renderMessageText = () => statusEnum.properties[status].text;
@@ -47,11 +118,13 @@ const Locator = ({ isGeolocationAvailable, coords, positionError }) => {
           <div className="Locator-message-text">{renderMessageText()}</div>
         </div>
         <Form
+          hidden={status === statusEnum.LOOKING_FOR_LOCATION}
           onSubmit={handleFormSubmit}
           buttonText="Find a place to eat"
           inputPlaceholder="Enter your location"
         />
       </div>
+      {navigateTo()}
     </div>
   );
 };
@@ -62,9 +135,14 @@ Locator.propTypes = {
   isGeolocationAvailable: PropTypes.bool,
 };
 
-export default geolocated({
-  positionOptions: {
-    enableHighAccuracy: true,
-  },
-  userDecisionTimeout: 5000,
-})(Locator);
+export default connect(
+  null,
+  { setResults, setUserCoordinates },
+)(
+  geolocated({
+    positionOptions: {
+      enableHighAccuracy: true,
+    },
+    userDecisionTimeout: 9000,
+  })(Locator),
+);

@@ -1,0 +1,4 @@
+export const SET_RESULTS = 'SET_RESULTS';
+export const SET_USER_LOCATION = 'SET_USER_LOCATION';
+export const SET_USER_COORDINATES = 'SET_USER_COORDINATES';
+export const SET_SHOW_MAP = 'SET_SHOW_MAP';

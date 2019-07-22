@@ -2,16 +2,18 @@ import React, { useState } from 'react';
 import PropTypes from 'prop-types';
 import './form.css';
 
-const Form = ({ inputPlaceholder, onSubmit, buttonText }) => {
+const Form = ({ inputPlaceholder, onSubmit, buttonText, hidden }) => {
   const [value, setValue] = useState(null);
 
   const handleSubmit = e => {
     e && e.preventDefault();
-    onSubmit && onSubmit(value);
+    value && onSubmit && onSubmit(value);
   };
 
+  const classes = hidden ? 'Form disabled' : 'Form';
+
   return (
-    <form className="Form" onSubmit={handleSubmit}>
+    <form className={classes} onSubmit={handleSubmit}>
       <input
         className="Form-search-input"
         type="text"
@@ -37,6 +39,7 @@ Form.propTypes = {
   onSubmit: PropTypes.func,
   inputPlaceholder: PropTypes.string,
   buttonText: PropTypes.string,
+  hidden: PropTypes.bool,
 };
 
 export default Form;
