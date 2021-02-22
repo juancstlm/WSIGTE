@@ -5,19 +5,34 @@ import { Map, MapkitProvider, Marker, useMap } from 'react-mapkit';
 
 export default function Home() {
 
+  const STATUS = {
+    INIT: 'Initializing',
+    GETTING_YOUR_LOCATION:'Getting your location',
+    LOCATION_FOUND: 'Location Found',
+    LOOKING_FOR_RESULTS: 'Looking for Places to Eat',
+    RESULTS_FOUND: 'Results Found',
+    NO_RESULTS_FOUND: 'Out of Luck Chief',
+    LOCATION_NOT_FOUND: 'We could not find you try another address.'
+  }
+
+  const MAX_RADIUS = 60000;
+
   const UseMapExample = () => {
-    const { map, mapProps, setCenter, mapkit, setRegion, setVisibleMapRect } = useMap({showsUserLocation: true, tracksUserLocation: true})
+    const { map, mapProps, setCenter, mapkit, setRegion, setVisibleMapRect } = useMap({showsUserLocation: true,})
     const [userCoordinates, setUserCoordinates] = useState()
     const [results, setResults] = useState()
-    const [status, setStatus] =  useState('Getting your location')
+    const [status, setStatus] =  useState(STATUS.INIT)
     const [placeAnnotation, setPlaceAnnotation] = useState()
     const [path, setPath] = useState()
     const [eventListeners, setEventListeners] = useState([])
     const [radius, setRadius] = useState(3000);
+    const [locationQuery, setLocationQuery] = useState('')
     const [geocoder, setGeocoder] = useState()
 
+    //Add location listener to the map
     useEffect(()=>{
-      if (map && eventListeners.length < 3) {
+      // wait for the map to initialize and the event listeners to be empty
+      if (map && eventListeners.length < 3 && status === STATUS.INIT) {
         map.addEventListener('user-location-change', handleUserLocationChange)
         setEventListeners([...eventListeners, 'user-location-change'])
         map.addEventListener('user-location-error',handleUserLocationError)
@@ -26,16 +41,18 @@ export default function Home() {
     }, [map])
 
     useEffect(()=>{
-      if(mapkit && userCoordinates){
-        let region = new mapkit.CoordinateRegion(userCoordinates);
+      if(mapkit && userCoordinates && status === STATUS.LOCATION_FOUND){
+        let span = new mapkit.CoordinateSpan(.016, .016);
+        let region = new mapkit.CoordinateRegion(userCoordinates, span);
         setRegion(region)
         setCenter([userCoordinates.latitude,
           userCoordinates.longitude])
-        searchForPlacesToEat()
+        searchForPlacesToEat(radius)
       }
 
-    }, [mapkit, userCoordinates, radius])
+    }, [mapkit, userCoordinates])
 
+    //wait for mapkit to be initialized and create a new geocoder
     useEffect(() => {
       if(mapkit){
         setGeocoder(new mapkit.Geocoder({
@@ -43,16 +60,6 @@ export default function Home() {
         }))
       }
     }, [mapkit])
-
-    useEffect(() => {
-      if(geocoder && radius === 30000) {
-        geocoder.lookup('93905', (error, data)=>{
-          if(data.results.length > 0){
-            setUserCoordinates(data.results[0].coordinate)
-          }
-        })
-      }
-    }, [geocoder, radius]);
 
     useEffect(() => {
       if(results?.length > 1){
@@ -65,7 +72,7 @@ export default function Home() {
         // Pick a random place from the list of search results
         let randomIndex = Math.floor(Math.random() * results.length);
 
-        setStatus('Results found');
+        setStatus(STATUS.RESULTS_FOUND);
         let randomPlace = results[randomIndex];
         let randomPlaceAnnotation = new mapkit.MarkerAnnotation(
           randomPlace.coordinate
@@ -111,12 +118,29 @@ export default function Home() {
 
     const handleUserLocationChange = (event) => {
       const {coordinate, timestamp} = event
+      setStatus(STATUS.LOCATION_FOUND);
       setUserCoordinates(coordinate)
-      console.log('User Location Changed');
+      console.log('User Location Changed', coordinate);
     }
 
     const handleUserLocationError = (error) => {
       console.warn(`Error ${error.code}, ${error.message}`)
+    }
+
+    const geocoderLookup = () => {
+      //remove event listeners
+      setRadius(3000)
+      map.removeEventListener('user-location-change')
+      map.removeEventListener('user-location-error')
+      setEventListeners([])
+      geocoder.lookup(locationQuery, (error, data)=>{
+        if(data.results.length > 0){
+          setStatus(STATUS.LOCATION_FOUND);
+          setUserCoordinates(data.results[0].coordinate)
+        } else {
+          setStatus(STATUS.LOCATION_NOT_FOUND)
+        }
+      })
     }
 
     const renderLoadingScreen = () => {
@@ -129,8 +153,24 @@ export default function Home() {
       } return null;
     }
 
-    const searchForPlacesToEat = () => {
-      setStatus('Looking for Places')
+    const renderLocationInputScreen = () => {
+      if (geocoder && radius >= MAX_RADIUS) {
+        return (<div style={{height: '100%', width: '100%', position: 'absolute', zIndex: 100, backgroundColor: 'white'}}>
+          <h1><a href="https://github.com/juancstlm/wthsige" >Where Should I Go To Eat</a></h1>
+          <h2>Loading</h2>
+          <h3>{status}</h3>
+          <input type='search' onChange={(e) => {
+            setLocationQuery(e.target.value)
+          }}/>
+          <div style={{position: 'absolute', bottom: 100, zIndex: 10, left: 200}}>
+            <button onClick={geocoderLookup}>Search</button>
+          </div>
+        </div>)
+      } return null;
+    }
+
+    const searchForPlacesToEat = (searchRadius) => {
+      setStatus(STATUS.LOOKING_FOR_RESULTS)
 
       if(placeAnnotation){
         map.removeAnnotation(placeAnnotation)
@@ -147,7 +187,7 @@ export default function Home() {
       let pointOfInterestSearch = new mapkit.PointsOfInterestSearch({
         center: userCoordinates,
         pointOfInterestFilter: filters,
-        radius: radius,
+        radius: searchRadius,
       })
 
       pointOfInterestSearch.search((error, data) => {
@@ -158,8 +198,14 @@ export default function Home() {
         }
 
         if (data.places.length === 0){
-          //no places found increase the radius length by 1000
-          radius < 30000 ? setRadius(radius + 1000) : setStatus('Out of Luck Chief')
+          //no places found increase the radius
+          if(searchRadius < MAX_RADIUS){
+            setRadius(searchRadius * 2)
+            searchForPlacesToEat(searchRadius * 2)
+          } else {
+            setStatus(STATUS.NO_RESULTS_FOUND)
+          }
+          // radius < MAX_RADIUS ? setRadius(radius * 2) : setStatus(STATUS.NO_RESULTS_FOUND)
         }
         else {
           setResults(data.places);
@@ -171,11 +217,12 @@ export default function Home() {
       <>
         <h1>Why dont you eat Here?</h1>
         {renderLoadingScreen()}
+        {renderLocationInputScreen()}
         <div id={'test'} style={{ width: '100%', margin: '0 auto', height: '100vh' }}>
           <Map {...mapProps} />
         </div>
         {results ? <div style={{position: 'absolute', bottom: 100, zIndex: 10, left: 200}}>
-          <button onClick={searchForPlacesToEat}>No! That Place Looks Awful</button>
+          <button onClick={()=>searchForPlacesToEat(radius)}>No! That Place Looks Awful</button>
         </div> : null}
       </>
     )
