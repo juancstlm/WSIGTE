@@ -37,3 +37,8 @@ test-timings.json
 # Vercel
 .vercel
 .now
+cert.pem
+key.pem
+keytmp.pem
+localhost.crt
+localhost.key
