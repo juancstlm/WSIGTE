@@ -24,7 +24,6 @@ export default function Home() {
     const [status, setStatus] =  useState(STATUS.INIT)
     const [placeAnnotation, setPlaceAnnotation] = useState()
     const [path, setPath] = useState()
-    const [eventListeners, setEventListeners] = useState([])
     const [radius, setRadius] = useState(3000);
     const [locationQuery, setLocationQuery] = useState('')
     const [geocoder, setGeocoder] = useState()
@@ -32,11 +31,9 @@ export default function Home() {
     //Add location listener to the map
     useEffect(()=>{
       // wait for the map to initialize and the event listeners to be empty
-      if (map && eventListeners.length < 3 && status === STATUS.INIT) {
+      if (map && status === STATUS.INIT) {
         map.addEventListener('user-location-change', handleUserLocationChange)
-        setEventListeners([...eventListeners, 'user-location-change'])
         map.addEventListener('user-location-error',handleUserLocationError)
-        setEventListeners([...eventListeners, 'user-location-error'])
       }
     }, [map])
 
@@ -121,6 +118,8 @@ export default function Home() {
       setStatus(STATUS.LOCATION_FOUND);
       setUserCoordinates(coordinate)
       console.log('User Location Changed', coordinate);
+      map.removeEventListener('user-location-change', handleUserLocationChange)
+      map.removeEventListener('user-location-error', handleUserLocationError)
     }
 
     const handleUserLocationError = (error) => {
@@ -131,9 +130,8 @@ export default function Home() {
     const geocoderLookup = () => {
       //remove event listeners
       setRadius(3000)
-      map.removeEventListener('user-location-change')
-      map.removeEventListener('user-location-error')
-      setEventListeners([])
+      map.removeEventListener('user-location-change', handleUserLocationChange)
+      map.removeEventListener('user-location-error', handleUserLocationError)
       geocoder.lookup(locationQuery, (error, data)=>{
         if(data.results.length > 0){
           setStatus(STATUS.LOCATION_FOUND);
