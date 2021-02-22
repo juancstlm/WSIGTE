@@ -14,6 +14,7 @@ export default function Home() {
     const [path, setPath] = useState()
     const [eventListeners, setEventListeners] = useState([])
     const [radius, setRadius] = useState(3000);
+    const [geocoder, setGeocoder] = useState()
 
     useEffect(()=>{
       if (map && eventListeners.length < 3) {
@@ -23,16 +24,6 @@ export default function Home() {
         setEventListeners([...eventListeners, 'user-location-error'])
       }
     }, [map])
-
-    const handleUserLocationChange = (event) => {
-      const {coordinate, timestamp} = event
-      setUserCoordinates(coordinate)
-      console.log('User Location Changed');
-    }
-
-    const handleUserLocationError = (error) => {
-      console.warn(`Error ${error.code}, ${error.message}`)
-    }
 
     useEffect(()=>{
       if(mapkit && userCoordinates){
@@ -44,6 +35,89 @@ export default function Home() {
       }
 
     }, [mapkit, userCoordinates, radius])
+
+    useEffect(() => {
+      if(mapkit){
+        setGeocoder(new mapkit.Geocoder({
+          getsUserLocation: true
+        }))
+      }
+    }, [mapkit])
+
+    useEffect(() => {
+      if(geocoder && radius === 30000) {
+        geocoder.lookup('93905', (error, data)=>{
+          if(data.results.length > 0){
+            setUserCoordinates(data.results[0].coordinate)
+          }
+        })
+      }
+    }, [geocoder, radius]);
+
+    useEffect(() => {
+      if(results?.length > 1){
+        // Place the users location on the map via a MarkerAnnotation
+        let userAnnotation = new mapkit.MarkerAnnotation(userCoordinates);
+        userAnnotation.color = "#f96345";
+        userAnnotation.glyphText = "🏠";
+        map.addAnnotation(userAnnotation);
+
+        // Pick a random place from the list of search results
+        let randomIndex = Math.floor(Math.random() * results.length);
+
+        setStatus('Results found');
+        let randomPlace = results[randomIndex];
+        let randomPlaceAnnotation = new mapkit.MarkerAnnotation(
+          randomPlace.coordinate
+        );
+        randomPlaceAnnotation.color = "#5688d9";
+        randomPlaceAnnotation.title = randomPlace.name;
+        randomPlaceAnnotation.subtitle = randomPlace.formattedAddress;
+
+        // add the annotation to the map
+        setPlaceAnnotation(randomPlaceAnnotation);
+        map.addAnnotation(randomPlaceAnnotation);
+
+        let route = new mapkit.Directions().route(
+          {
+            origin: userCoordinates,
+            destination: randomPlace
+          },
+          (error, data) => {
+            let polylines = data.routes.map(route => {
+              return new mapkit.PolylineOverlay(route.polyline.points, {
+                style: new mapkit.Style({
+                  lineWidth: 5,
+                  strokeColor: "#139cc2"
+                })
+              });
+            });
+
+            setPath(polylines)
+
+            map.showItems(polylines, {
+              animate: true,
+              padding: new mapkit.Padding({
+                top: 200,
+                right: 56,
+                bottom: 100,
+                left: 56
+              })
+            });
+          }
+        );
+      }
+    }, [results]);
+
+    const handleUserLocationChange = (event) => {
+      const {coordinate, timestamp} = event
+      setUserCoordinates(coordinate)
+      console.log('User Location Changed');
+    }
+
+    const handleUserLocationError = (error) => {
+      console.warn(`Error ${error.code}, ${error.message}`)
+    }
 
     const renderLoadingScreen = () => {
       if (!results) {
@@ -57,7 +131,6 @@ export default function Home() {
 
     const searchForPlacesToEat = () => {
       setStatus('Looking for Places')
-      const searchParams = '93905';
 
       if(placeAnnotation){
         map.removeAnnotation(placeAnnotation)
@@ -89,56 +162,7 @@ export default function Home() {
           radius < 30000 ? setRadius(radius + 1000) : setStatus('Out of Luck Chief')
         }
         else {
-          // Place the users location on the map via a MarkerAnnotation
-          let userAnnotation = new mapkit.MarkerAnnotation(userCoordinates);
-          userAnnotation.color = "#f96345";
-          userAnnotation.glyphText = "🏠";
-          map.addAnnotation(userAnnotation);
-
-          // Pick a random place from the list of search results
-          let randomIndex = Math.floor(Math.random() * data.places.length);
           setResults(data.places);
-          setStatus('Results found');
-          let randomPlace = data.places[randomIndex];
-          let randomPlaceAnnotation = new mapkit.MarkerAnnotation(
-            randomPlace.coordinate
-          );
-          randomPlaceAnnotation.color = "#5688d9";
-          randomPlaceAnnotation.title = randomPlace.name;
-          randomPlaceAnnotation.subtitle = randomPlace.formattedAddress;
-
-          // add the annotation to the map
-          setPlaceAnnotation(randomPlaceAnnotation);
-          map.addAnnotation(randomPlaceAnnotation);
-
-          let route = new mapkit.Directions().route(
-            {
-              origin: userCoordinates,
-              destination: randomPlace
-            },
-            (error, data) => {
-              let polylines = data.routes.map(route => {
-                return new mapkit.PolylineOverlay(route.polyline.points, {
-                  style: new mapkit.Style({
-                    lineWidth: 5,
-                    strokeColor: "#139cc2"
-                  })
-                });
-              });
-
-              setPath(polylines)
-
-              map.showItems(polylines, {
-                animate: true,
-                padding: new mapkit.Padding({
-                  top: 200,
-                  right: 56,
-                  bottom: 100,
-                  left: 56
-                })
-              });
-            }
-          );
         }
       });
     }
