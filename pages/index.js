@@ -124,6 +124,7 @@ export default function Home() {
     }
 
     const handleUserLocationError = (error) => {
+      setStatus(STATUS.LOCATION_NOT_FOUND)
       console.warn(`Error ${error.code}, ${error.message}`)
     }
 
@@ -154,7 +155,7 @@ export default function Home() {
     }
 
     const renderLocationInputScreen = () => {
-      if (geocoder && radius >= MAX_RADIUS) {
+      if (geocoder && radius >= MAX_RADIUS || status === STATUS.LOCATION_NOT_FOUND) {
         return (<div style={{height: '100%', width: '100%', position: 'absolute', zIndex: 100, backgroundColor: 'white'}}>
           <h1><a href="https://github.com/juancstlm/wthsige" >Where Should I Go To Eat</a></h1>
           <h2>Loading</h2>
