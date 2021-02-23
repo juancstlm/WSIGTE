@@ -20,7 +20,9 @@ export default function Home() {
   const UseMapExample = () => {
     const { map, mapProps, setCenter, mapkit, setRegion, setVisibleMapRect } = useMap({showsUserLocation: true,})
     const [userCoordinates, setUserCoordinates] = useState()
-    const [results, setResults] = useState()
+    const [results, setResults] = useState([])
+    const [randomResultGenerator, setRandomResultsGenerator] = useState()
+    const [randomPlace, setRandomPlace] = useState()
     const [status, setStatus] =  useState(STATUS.INIT)
     const [placeAnnotation, setPlaceAnnotation] = useState()
     const [path, setPath] = useState()
@@ -66,11 +68,20 @@ export default function Home() {
         userAnnotation.glyphText = "🏠";
         map.addAnnotation(userAnnotation);
 
-        // Pick a random place from the list of search results
-        let randomIndex = Math.floor(Math.random() * results.length);
+        //pick a random place from the results
+        setRandomPlace(randomResultGenerator.next().value)
+      }
+    }, [results]);
 
-        setStatus(STATUS.RESULTS_FOUND);
-        let randomPlace = results[randomIndex];
+    useEffect(() => {
+      if(randomPlace){
+        //Clear current paths and annotations
+        if(placeAnnotation){
+          map.removeAnnotation(placeAnnotation)
+        }
+        if(path){
+          map.removeItems(path)
+        }
         let randomPlaceAnnotation = new mapkit.MarkerAnnotation(
           randomPlace.coordinate
         );
@@ -82,6 +93,7 @@ export default function Home() {
         setPlaceAnnotation(randomPlaceAnnotation);
         map.addAnnotation(randomPlaceAnnotation);
 
+        //Create a route for the place
         let route = new mapkit.Directions().route(
           {
             origin: userCoordinates,
@@ -111,7 +123,21 @@ export default function Home() {
           }
         );
       }
-    }, [results]);
+    }, [randomPlace]);
+
+
+
+    function* createUniqueRandomGenerator(places) {
+      const available = places;
+
+      while(available.length !== 0){
+        const randomIndex = Math.floor(Math.random() * available.length);
+        const value = available[randomIndex];
+
+        available.splice(randomIndex, 1)
+        yield value
+      }
+    }
 
     const handleUserLocationChange = (event) => {
       const {coordinate, timestamp} = event
@@ -128,7 +154,7 @@ export default function Home() {
     }
 
     const geocoderLookup = () => {
-      //remove event listeners
+      //remove event listeners as location is being handled by the geocoder.
       setRadius(3000)
       map.removeEventListener('user-location-change', handleUserLocationChange)
       map.removeEventListener('user-location-error', handleUserLocationError)
@@ -143,7 +169,7 @@ export default function Home() {
     }
 
     const renderLoadingScreen = () => {
-      if (!results) {
+      if (results.length === 0) {
         return (<div style={{height: '100%', width: '100%', position: 'absolute', zIndex: 100, backgroundColor: 'white'}}>
           <h1><a href="https://github.com/juancstlm/wthsige" >Where Should I Go To Eat</a></h1>
           <h2>Loading</h2>
@@ -170,16 +196,7 @@ export default function Home() {
 
     const searchForPlacesToEat = (searchRadius) => {
       setStatus(STATUS.LOOKING_FOR_RESULTS)
-
-      if(placeAnnotation){
-        map.removeAnnotation(placeAnnotation)
-      }
-
-      if(path){
-        map.removeItems(path)
-      }
-
-      // let span = new mapkit.CoordinateSpan(0.016, 0.016);
+      //Create a new point of interest filter
       let filters = new mapkit.PointOfInterestFilter
         .including([mapkit.PointOfInterestCategory.Bakery, mapkit.PointOfInterestCategory.Cafe ,mapkit.PointOfInterestCategory.Restaurant])
 
@@ -204,9 +221,10 @@ export default function Home() {
           } else {
             setStatus(STATUS.NO_RESULTS_FOUND)
           }
-          // radius < MAX_RADIUS ? setRadius(radius * 2) : setStatus(STATUS.NO_RESULTS_FOUND)
         }
         else {
+          setStatus(STATUS.RESULTS_FOUND);
+          setRandomResultsGenerator(createUniqueRandomGenerator(data.places))
           setResults(data.places);
         }
       });
@@ -220,8 +238,10 @@ export default function Home() {
         <div id={'test'} style={{ width: '100%', margin: '0 auto', height: '100vh' }}>
           <Map {...mapProps} />
         </div>
-        {results ? <div style={{position: 'absolute', bottom: 100, zIndex: 10, left: 200}}>
-          <button onClick={()=>searchForPlacesToEat(radius)}>No! That Place Looks Awful</button>
+        {results.length > 0 ? <div style={{position: 'absolute', bottom: 100, zIndex: 10, left: 200}}>
+          <button onClick={()=> {
+            setRandomPlace(randomResultGenerator.next().value)
+          }}>No! That Place Looks Awful</button>
         </div> : null}
       </>
     )
