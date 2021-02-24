@@ -3,6 +3,7 @@ import styles from '../styles/Home.module.css'
 import { useEffect, useState } from 'react';
 import { Map, MapkitProvider, Marker, useMap } from 'react-mapkit';
 import { Overlay } from '../components/Overlay';
+import * as React from 'react';
 // import { getYelpData } from '../services/api';
 
 export const STATUS = {
@@ -18,6 +19,7 @@ export const STATUS = {
 export default function Home() {
 
   const UseMapExample = () => {
+    let title = 'Where Should I Go To Eat?'
     const { map, mapProps, setCenter, mapkit, setRegion, setVisibleMapRect } = useMap({showsUserLocation: true,})
     const [userCoordinates, setUserCoordinates] = useState()
     const [results, setResults] = useState([])
@@ -28,6 +30,7 @@ export default function Home() {
     const [path, setPath] = useState()
     const [locationQuery, setLocationQuery] = useState('')
     const [geocoder, setGeocoder] = useState()
+    const [isOverlayVisible, setIsOverlayVisible] = useState(true);
 
     //Add location listener to the map
     useEffect(()=>{
@@ -188,23 +191,6 @@ export default function Home() {
       } return null;
     }
 
-    const renderOverlay = () => {
-      let title = 'Where Should I Go To Eat?'
-      let visible = false;
-      switch (status){
-        case STATUS.INIT:
-          visible = true;
-          break;
-        case STATUS.RESULTS_FOUND:
-          visible = false;
-          break;
-        case STATUS.LOCATION_NOT_FOUND:
-          visible = true;
-
-      }
-
-      return <Overlay visible={visible} title={title} status={status}/>
-
       // if (geocoder && status === STATUS.LOCATION_NOT_FOUND) {
       //   return (<div className='loadingScreenContainer'>
       //     <h1 className='loadingScreenTitle'>Where Should I Go To Eat</h1>
@@ -218,7 +204,6 @@ export default function Home() {
       //     </div>
       //   </div>)
       // } return null;
-    }
 
     const searchForPlacesToEat = () => {
       setStatus(STATUS.LOOKING_FOR_RESULTS)
@@ -259,6 +244,7 @@ export default function Home() {
         }
         else {
           setStatus(STATUS.RESULTS_FOUND);
+          setIsOverlayVisible(false);
           setRandomResultsGenerator(createUniqueRandomGenerator(data.places))
           setResults(data.places);
         }
@@ -272,20 +258,23 @@ export default function Home() {
           <div className='sidebarContainer'>
             <div>
               <div>
-                <h1>Why Don't you Eat At</h1>
+                <h1 className='locationInfoHeader'>Why Don't you Eat At</h1>
                 {_wpURL ? <a className="placeTitle" href={_wpURL}>{name}</a> : <h2>{name}</h2>}
-                <p>{pointOfInterestCategory}</p>
+                {/*<p>{pointOfInterestCategory}</p>*/}
               </div>
-              <div>
+              <div className='locationInfoSection'>
                 <h3>Address</h3>
-                <p>{formattedAddress}</p>
+                <a href={`https://maps.google.com/?q=${formattedAddress}`}>
+                  <a href={`https://maps.google.com/?q=${formattedAddress}`}>
+                    {formattedAddress}</a></a>
+                {/*<a href={`geo:${coordinate.latitude},${coordinate.longitude}`} target="_blank" className='locationInfo_section_paragraph'>{formattedAddress}</a>*/}
               </div>
-              <div>
+              <div className='locationInfoSection'>
                 <h3>Phone</h3>
-                <p>{telephone}</p>
+                <p className='locationInfo_section_paragraph'>{telephone}</p>
               </div>
               {urls.length > 0 ?
-                <div>
+                <div className='locationInfoSection'>
                   <h3>Websites</h3>
                   {urls.map(url => <a href={url}>{url}</a>)}
                 </div>: null}
@@ -295,8 +284,9 @@ export default function Home() {
                   let newPlace = randomResultGenerator.next()
                   newPlace.done ? searchForPlacesToEat() : setRandomPlace(newPlace.value)
                 }}>No! That Place Looks Awful</button>
-                <button onClick={()=> {
+                <button className='button_secondary' onClick={()=> {
                   setStatus(STATUS.LOCATION_NOT_FOUND)
+                  setIsOverlayVisible(true)
                 }}>My Location is Wrong</button>
               </div>
           </div>)
@@ -305,9 +295,20 @@ export default function Home() {
       }
     }
 
+    const renderLocationOverlayChildren = () => {
+      return (<>
+        <input placeholder='Your Location' type='search' onChange={(e) => {
+          setLocationQuery(e.target.value)
+        }}/>
+        <div>
+          <button className={locationQuery ? '' : 'button_disabled'} disabled={status === STATUS.GETTING_YOUR_LOCATION || !locationQuery} onClick={geocoderLookup}>Search</button>
+        </div>
+      </>)
+    }
+
     return (
       <div style={{display: 'flex'}}>
-        {renderOverlay()}
+        <Overlay visible={isOverlayVisible} title={title} status={status} children={status === STATUS.LOCATION_NOT_FOUND ? renderLocationOverlayChildren() : null }/>
         <div style={{ width: '100%', margin: '0 auto', height: '100vh' }}>
           <Map {...mapProps} />
         </div>
