@@ -30,7 +30,7 @@ export default function Home() {
 
   const UseMapExample = () => {
     let title = 'Where Should I Go To Eat?'
-    const { map, mapProps, setCenter, mapkit, setRegion, setVisibleMapRect } = useMap({showsUserLocation: true,})
+    const { map, mapProps, setCenter, mapkit, setRegion } = useMap({showsUserLocation: true,})
     const [userCoordinates, setUserCoordinates] = useState()
     const [results, setResults] = useState([])
     const [randomResultGenerator, setRandomResultsGenerator] = useState()
@@ -63,8 +63,8 @@ export default function Home() {
     useEffect(()=>{
       if(mapkit && userCoordinates && status === STATUS.LOCATION_FOUND){
         let span = new mapkit.CoordinateSpan(0.1, 0.1);
-        let region = new mapkit.CoordinateRegion(userCoordinates, span);
-        setRegion(region)
+        // let region = new mapkit.CoordinateRegion(userCoordinates, span);
+        // setRegion(region)
         setCenter([userCoordinates.latitude,
           userCoordinates.longitude])
         searchForPlacesToEat()
