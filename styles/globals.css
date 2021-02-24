@@ -1,7 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@700&display=swap');
 html {
   font-family: Rajdhani, sans-serif;
-  font-size:62.5%;
+  font-size: 62.5%;
 }
 body {
   padding: 0;
@@ -9,8 +9,8 @@ body {
 }
 
 a {
-  text-decoration: none;
-  color: #333;
+  text-decoration: underline;
+  color: #FF6E30;
 }
 * {
   box-sizing: border-box;
@@ -18,7 +18,7 @@ a {
 h1 {
   font-weight: 300;
   z-index: 1;
-  padding: 15px;
+  padding: 1.5rem;
   margin: 0;
   min-width: 30rem;
 }
@@ -26,6 +26,14 @@ h2 {
   color: #FF6E30;
   font-size: 2rem;
   margin-left: 1rem;
+}
+.sidebarContainer{
+  width: 45rem;
+  height: 100vh;
+  background-color: #F4F4F4;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 .placeTitle {
   color: #FF6E30;
@@ -37,21 +45,59 @@ button {
   text-align: center;
   font-weight: 300;
   color: white;
-  font-size: 2.8rem;
+  font-size: 2.4rem;
   font-family: Rajdhani, sans-serif;
   background-color: #FF6E30;
   z-index: 1;
   padding: 0.5rem 1.6rem;
   margin: 0.5rem;
-  min-width: 30rem;
+  min-width: 22rem;
   border-radius: 1rem;
   border: none;
+}
+
+.loadingScreenContainer {
+  height: 100%;
+  width: 100%;
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  background-color: #F4F4F4;
+  justify-content: flex-start;
+  align-items: center;
+}
+.loadingScreenTitle{
+  text-align: center;
+  font-size: 2.8rem;
+}
+.loadingScreenSubtitle {
+  font-size: 1.6rem;
+}
+.loadingScreenStatus {
+  font-size: 1.6rem;
+}
+input{
+  background-color: transparent;
+  text-align: center;
+  font-size: 1.8rem;
+  font-family: Rajdhani, sans-serif;
+  border-bottom-width: 0.1rem;
+  border-bottom-color: #1E252B;
+  border-top-width: 0;
+  border-left-width: 0;
+  border-right-width: 0;
+}
+input:focus {
+  outline:none;
+  border-bottom-width: 0.2rem;
+  border-bottom-color: #FF6E30;
 }
 /*@font-face {*/
 /*  font-family: Rajdhani;*/
 /*  font-style: normal;*/
 /*  font-weight: 700;*/
-/*  src: local("Rajdhani Bold"), local("Rajdhani-Bold"),*/
+/*  components: local("Rajdhani Bold"), local("Rajdhani-Bold"),*/
 /*  url(https://fonts.gstatic.com/s/rajdhani/v5/kcO_Mk7pjy8jlu86STaVz50EAVxt0G0biEntp43Qt6E.ttf)*/
 /*  format("truetype");*/
 /*}*/

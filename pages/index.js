@@ -2,21 +2,20 @@ import Head from 'next/head'
 import styles from '../styles/Home.module.css'
 import { useEffect, useState } from 'react';
 import { Map, MapkitProvider, Marker, useMap } from 'react-mapkit';
+import { Overlay } from '../components/Overlay';
 // import { getYelpData } from '../services/api';
 
+export const STATUS = {
+  INIT: 'Initializing',
+  GETTING_YOUR_LOCATION:'Getting your location',
+  LOCATION_FOUND: 'Location Found',
+  LOOKING_FOR_RESULTS: 'Looking for Places to Eat',
+  RESULTS_FOUND: 'Results Found',
+  NO_RESULTS_FOUND: 'Out of Luck Chief',
+  LOCATION_NOT_FOUND: 'We could not find you, try another address.'
+}
+
 export default function Home() {
-
-  const STATUS = {
-    INIT: 'Initializing',
-    GETTING_YOUR_LOCATION:'Getting your location',
-    LOCATION_FOUND: 'Location Found',
-    LOOKING_FOR_RESULTS: 'Looking for Places to Eat',
-    RESULTS_FOUND: 'Results Found',
-    NO_RESULTS_FOUND: 'Out of Luck Chief',
-    LOCATION_NOT_FOUND: 'We could not find you try another address.'
-  }
-
-  const MAX_RADIUS = 60000;
 
   const UseMapExample = () => {
     const { map, mapProps, setCenter, mapkit, setRegion, setVisibleMapRect } = useMap({showsUserLocation: true,})
@@ -27,7 +26,6 @@ export default function Home() {
     const [status, setStatus] =  useState(STATUS.INIT)
     const [placeAnnotation, setPlaceAnnotation] = useState()
     const [path, setPath] = useState()
-    const [radius, setRadius] = useState(3000);
     const [locationQuery, setLocationQuery] = useState('')
     const [geocoder, setGeocoder] = useState()
 
@@ -35,6 +33,7 @@ export default function Home() {
     useEffect(()=>{
       // wait for the map to initialize and the event listeners to be empty
       if (map && status === STATUS.INIT) {
+        setStatus(STATUS.GETTING_YOUR_LOCATION)
         map.addEventListener('user-location-change', handleUserLocationChange)
         map.addEventListener('user-location-error',handleUserLocationError)
       }
@@ -42,12 +41,12 @@ export default function Home() {
 
     useEffect(()=>{
       if(mapkit && userCoordinates && status === STATUS.LOCATION_FOUND){
-        let span = new mapkit.CoordinateSpan(.016, .016);
+        let span = new mapkit.CoordinateSpan(0.1, 0.1);
         let region = new mapkit.CoordinateRegion(userCoordinates, span);
         setRegion(region)
         setCenter([userCoordinates.latitude,
           userCoordinates.longitude])
-        searchForPlacesToEat(radius)
+        searchForPlacesToEat()
       }
 
     }, [mapkit, userCoordinates])
@@ -161,8 +160,8 @@ export default function Home() {
     }
 
     const geocoderLookup = () => {
+      setStatus(STATUS.GETTING_YOUR_LOCATION)
       //remove event listeners as location is being handled by the geocoder.
-      setRadius(3000)
       map.removeEventListener('user-location-change', handleUserLocationChange)
       map.removeEventListener('user-location-error', handleUserLocationError)
       geocoder.lookup(locationQuery, (error, data)=>{
@@ -176,50 +175,72 @@ export default function Home() {
     }
 
     const renderLoadingScreen = () => {
-      if (results.length === 0) {
-        return (
-          <div style={{
-            height: '100%', width: '100%', position: 'absolute', zIndex: 100, backgroundColor: 'white', display: 'flex',
-            justifyContent: 'center'
-          }}>
-            <h1><a href="https://github.com/juancstlm/wthsige" >Where Should I Go To Eat</a></h1>
-            <div style={{marginTop: '7rem'}}>
-              <h2>Loading</h2>
-              <h3>{status}</h3>
-            </div>
-          </div>)
+      if (!randomPlace) {
+        return <Overlay />
+        // return (
+        //   <div className='loadingScreenContainer'>
+        //     <h1>Where Should I Go To Eat</h1>
+        //     <div style={{marginTop: '7rem'}}>
+        //       <h2>Loading</h2>
+        //       <h3>{status}</h3>
+        //     </div>
+        //   </div>)
       } return null;
     }
 
-    const renderLocationInputScreen = () => {
-      if (geocoder && radius >= MAX_RADIUS || status === STATUS.LOCATION_NOT_FOUND) {
-        return (<div style={{height: '100%', width: '100%', position: 'absolute', zIndex: 100, backgroundColor: 'white'}}>
-          <h1><a href="https://github.com/juancstlm/wthsige" >Where Should I Go To Eat</a></h1>
-          <h2>Loading</h2>
-          <h3>{status}</h3>
-          <input type='search' onChange={(e) => {
-            setLocationQuery(e.target.value)
-          }}/>
-          <div style={{position: 'absolute', bottom: 100, zIndex: 10, left: 200}}>
-            <button onClick={geocoderLookup}>Search</button>
-          </div>
-        </div>)
-      } return null;
+    const renderOverlay = () => {
+      let title = 'Where Should I Go To Eat?'
+      let visible = false;
+      switch (status){
+        case STATUS.INIT:
+          visible = true;
+          break;
+        case STATUS.RESULTS_FOUND:
+          visible = false;
+          break;
+        case STATUS.LOCATION_NOT_FOUND:
+          visible = true;
+
+      }
+
+      return <Overlay visible={visible} title={title} status={status}/>
+
+      // if (geocoder && status === STATUS.LOCATION_NOT_FOUND) {
+      //   return (<div className='loadingScreenContainer'>
+      //     <h1 className='loadingScreenTitle'>Where Should I Go To Eat</h1>
+      //     {status === STATUS.INIT ? <p className='loadingScreenSubtitle'>Loading</p> : null}
+      //     <p className='loadingScreenStatus'>{status}</p>
+      //     <input placeholder='Your Location' type='search' onChange={(e) => {
+      //       setLocationQuery(e.target.value)
+      //     }}/>
+      //     <div>
+      //       <button disabled={status=== STATUS.GETTING_YOUR_LOCATION} onClick={geocoderLookup}>Search</button>
+      //     </div>
+      //   </div>)
+      // } return null;
     }
 
-    const searchForPlacesToEat = (searchRadius) => {
+    const searchForPlacesToEat = () => {
       setStatus(STATUS.LOOKING_FOR_RESULTS)
       //Create a new point of interest filter
       let filters = new mapkit.PointOfInterestFilter
         .including([mapkit.PointOfInterestCategory.Bakery, mapkit.PointOfInterestCategory.Cafe ,mapkit.PointOfInterestCategory.Restaurant])
 
-      let pointOfInterestSearch = new mapkit.PointsOfInterestSearch({
-        center: userCoordinates,
+      // let pointOfInterestSearch = new mapkit.PointsOfInterestSearch({
+      //   center: userCoordinates,
+      //   pointOfInterestFilter: filters,
+      //   radius: searchRadius,
+      // })
+      let span = new mapkit.CoordinateSpan(1, 1);
+      let searchRegion = new mapkit.CoordinateRegion(userCoordinates, span)
+      let pointOfInterestSearch = new mapkit.Search({
+        region: searchRegion,
+        getsUserLocation: true,
+        language: 'en-US',
         pointOfInterestFilter: filters,
-        radius: searchRadius,
       })
 
-      pointOfInterestSearch.search((error, data) => {
+      pointOfInterestSearch.search('Food',(error, data) => {
         if (error) {
           // TODO handle error
           console.warn('error while searching ')
@@ -227,13 +248,14 @@ export default function Home() {
         }
 
         if (data.places.length === 0){
+          setStatus(STATUS.NO_RESULTS_FOUND)
           //no places found increase the radius
-          if(searchRadius < MAX_RADIUS){
-            setRadius(searchRadius * 2)
-            searchForPlacesToEat(searchRadius * 2)
-          } else {
-            setStatus(STATUS.NO_RESULTS_FOUND)
-          }
+          // if(searchRadius < MAX_RADIUS){
+          //   setRadius(searchRadius * 2)
+          //   searchForPlacesToEat(searchRadius * 2)
+          // } else {
+          //   setStatus(STATUS.NO_RESULTS_FOUND)
+          // }
         }
         else {
           setStatus(STATUS.RESULTS_FOUND);
@@ -245,30 +267,38 @@ export default function Home() {
 
     const renderRandomPlaceDetails = () => {
       if(randomPlace) {
-        const { name, _wpURL, telephone, formattedAddress, fullThoroughfare, pointOfInterestCategory, urls } = randomPlace
+        const { name, coordinate, _wpURL, telephone, formattedAddress, fullThoroughfare, pointOfInterestCategory, urls } = randomPlace
         return (
-          <div style={{width: '45rem',  height: '100vh',backgroundColor: '#F4F4F4', display: 'flex', flexDirection: 'column'}}>
+          <div className='sidebarContainer'>
             <div>
-              <h1>Why Don't you Eat At</h1>
-              {_wpURL ? <a className="placeTitle" href={_wpURL}>{name}</a> : <h2>{name}</h2>}
-              <p>{pointOfInterestCategory}</p>
+              <div>
+                <h1>Why Don't you Eat At</h1>
+                {_wpURL ? <a className="placeTitle" href={_wpURL}>{name}</a> : <h2>{name}</h2>}
+                <p>{pointOfInterestCategory}</p>
+              </div>
+              <div>
+                <h3>Address</h3>
+                <p>{formattedAddress}</p>
+              </div>
+              <div>
+                <h3>Phone</h3>
+                <p>{telephone}</p>
+              </div>
+              {urls.length > 0 ?
+                <div>
+                  <h3>Websites</h3>
+                  {urls.map(url => <a href={url}>{url}</a>)}
+                </div>: null}
             </div>
-            <div>
-              <h3>Address</h3>
-              <p>{formattedAddress}</p>
-            </div>
-            <div>
-              <h3>Phone</h3>
-              <p>{telephone}</p>
-            </div>
-
-            <button onClick={()=> {
-              setRandomPlace(randomResultGenerator.next().value)
-            }}>No! That Place Looks Awful</button>
-            <button onClick={()=> {
-              setStatus(STATUS.LOCATION_NOT_FOUND)
-              setRadius(4000)
-            }}>My Location is Wrong</button>
+              <div>
+                <button onClick={()=> {
+                  let newPlace = randomResultGenerator.next()
+                  newPlace.done ? searchForPlacesToEat() : setRandomPlace(newPlace.value)
+                }}>No! That Place Looks Awful</button>
+                <button onClick={()=> {
+                  setStatus(STATUS.LOCATION_NOT_FOUND)
+                }}>My Location is Wrong</button>
+              </div>
           </div>)
       } else {
         return null;
@@ -277,9 +307,8 @@ export default function Home() {
 
     return (
       <div style={{display: 'flex'}}>
-        {renderLoadingScreen()}
-        {renderLocationInputScreen()}
-        <div id={'test'} style={{ width: '100%', margin: '0 auto', height: '100vh' }}>
+        {renderOverlay()}
+        <div style={{ width: '100%', margin: '0 auto', height: '100vh' }}>
           <Map {...mapProps} />
         </div>
         {renderRandomPlaceDetails()}
