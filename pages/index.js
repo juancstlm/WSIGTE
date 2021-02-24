@@ -1,9 +1,9 @@
 import Head from 'next/head'
-import styles from '../styles/Home.module.css'
 import { useEffect, useState } from 'react';
 import { Map, MapkitProvider, Marker, useMap } from 'react-mapkit';
 import { Overlay } from '../components/Overlay';
 import * as React from 'react';
+import AdSense from 'react-adsense';
 // import { getYelpData } from '../services/api';
 
 export const STATUS = {
@@ -31,6 +31,14 @@ export default function Home() {
     const [locationQuery, setLocationQuery] = useState('')
     const [geocoder, setGeocoder] = useState()
     const [isOverlayVisible, setIsOverlayVisible] = useState(true);
+
+    //addsense Scrip
+    useEffect(() => {
+      const script = document.createElement("script");
+      script.src = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js";
+      script.async = true;
+      document.body.appendChild(script);
+    }, );
 
     //Add location listener to the map
     useEffect(()=>{
@@ -313,6 +321,14 @@ export default function Home() {
           <Map {...mapProps} />
         </div>
         {renderRandomPlaceDetails()}
+        <div className='addSense'>
+          <AdSense.Google
+          client="ca-pub-1977255269343770"
+          slot="7259870550"
+          style={{ width: 500, height: 200 }}
+          ayout='in-article'
+          format=""
+        /></div>
       </div>
     )
   };

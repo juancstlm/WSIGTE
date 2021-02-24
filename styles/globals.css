@@ -118,6 +118,14 @@ input:focus {
 .button_disabled {
   background-color: #72757C;
 }
+.addSense {
+  width: 500px;
+  height: 200px;
+  bottom: 30px;
+  left: 30px;
+  position: absolute;
+  z-index: 300;
+}
 /*@font-face {*/
 /*  font-family: Rajdhani;*/
 /*  font-style: normal;*/
