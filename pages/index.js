@@ -5,6 +5,16 @@ import { Overlay } from '../components/Overlay';
 import * as React from 'react';
 import AdSense from 'react-adsense';
 // import { getYelpData } from '../services/api';
+import Bugsnag from '@bugsnag/js'
+import BugsnagPluginReact from '@bugsnag/plugin-react'
+
+Bugsnag.start({
+  apiKey: '64e770e7c1fa67c74c6a5e2f2e93512e',
+  plugins: [new BugsnagPluginReact()]
+})
+
+const ErrorBoundary = Bugsnag.getPlugin('react')
+  .createErrorBoundary(React)
 
 export const STATUS = {
   INIT: 'Initializing',
@@ -335,9 +345,10 @@ export default function Home() {
 
 
   return (
-    <MapkitProvider tokenOrCallback={'https://api.wsigte.com/token'}>
-      <UseMapExample/>
-    </MapkitProvider>
-
+    <ErrorBoundary>
+      <MapkitProvider tokenOrCallback={'https://api.wsigte.com/token'}>
+        <UseMapExample/>
+      </MapkitProvider>
+    </ErrorBoundary>
   )
 }
