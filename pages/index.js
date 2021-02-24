@@ -42,13 +42,13 @@ export default function Home() {
     const [geocoder, setGeocoder] = useState()
     const [isOverlayVisible, setIsOverlayVisible] = useState(true);
 
-    //addsense Scrip
+    //addsense Script
     useEffect(() => {
       const script = document.createElement("script");
       script.src = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js";
       script.async = true;
       document.body.appendChild(script);
-    }, );
+    }, [] );
 
     //Add location listener to the map
     useEffect(()=>{
@@ -325,20 +325,20 @@ export default function Home() {
     }
 
     return (
-      <div style={{display: 'flex'}}>
+      <div className='container'>
         <Overlay visible={isOverlayVisible} title={title} status={status} children={status === STATUS.LOCATION_NOT_FOUND ? renderLocationOverlayChildren() : null }/>
-        <div style={{ width: '100%', margin: '0 auto', height: '100vh' }}>
+        <div className='mapContainer'>
           <Map {...mapProps} />
         </div>
         {renderRandomPlaceDetails()}
-        <div className='addSense'>
-          <AdSense.Google
-          client="ca-pub-1977255269343770"
-          slot="7259870550"
-          style={{ width: 500, height: 200 }}
-          ayout='in-article'
-          format=""
-        /></div>
+        {/*<div className='addSense'>*/}
+        {/*  <AdSense.Google*/}
+        {/*  client="ca-pub-1977255269343770"*/}
+        {/*  slot="7259870550"*/}
+        {/*  style={{ width: 500, height: 200 }}*/}
+        {/*  ayout='in-article'*/}
+        {/*  format=""*/}
+        {/*/></div>*/}
       </div>
     )
   };
