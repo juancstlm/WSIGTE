@@ -2,6 +2,7 @@ import Head from 'next/head'
 import styles from '../styles/Home.module.css'
 import { useEffect, useState } from 'react';
 import { Map, MapkitProvider, Marker, useMap } from 'react-mapkit';
+// import { getYelpData } from '../services/api';
 
 export default function Home() {
 
@@ -82,6 +83,12 @@ export default function Home() {
         if(path){
           map.removeItems(path)
         }
+
+        // //check if yelp has data
+        // if(randomPlace._providerId === 'com.yelp'){
+        //   console.log(randomPlace._providerItemId)
+        //   getYelpData(randomPlace._providerItemId)
+        // }
         let randomPlaceAnnotation = new mapkit.MarkerAnnotation(
           randomPlace.coordinate
         );
@@ -170,11 +177,17 @@ export default function Home() {
 
     const renderLoadingScreen = () => {
       if (results.length === 0) {
-        return (<div style={{height: '100%', width: '100%', position: 'absolute', zIndex: 100, backgroundColor: 'white'}}>
-          <h1><a href="https://github.com/juancstlm/wthsige" >Where Should I Go To Eat</a></h1>
-          <h2>Loading</h2>
-          <h3>{status}</h3>
-        </div>)
+        return (
+          <div style={{
+            height: '100%', width: '100%', position: 'absolute', zIndex: 100, backgroundColor: 'white', display: 'flex',
+            justifyContent: 'center'
+          }}>
+            <h1><a href="https://github.com/juancstlm/wthsige" >Where Should I Go To Eat</a></h1>
+            <div style={{marginTop: '7rem'}}>
+              <h2>Loading</h2>
+              <h3>{status}</h3>
+            </div>
+          </div>)
       } return null;
     }
 
@@ -230,20 +243,47 @@ export default function Home() {
       });
     }
 
+    const renderRandomPlaceDetails = () => {
+      if(randomPlace) {
+        const { name, _wpURL, telephone, formattedAddress, fullThoroughfare, pointOfInterestCategory, urls } = randomPlace
+        return (
+          <div style={{width: '45rem',  height: '100vh',backgroundColor: '#F4F4F4', display: 'flex', flexDirection: 'column'}}>
+            <div>
+              <h1>Why Don't you Eat At</h1>
+              {_wpURL ? <a className="placeTitle" href={_wpURL}>{name}</a> : <h2>{name}</h2>}
+              <p>{pointOfInterestCategory}</p>
+            </div>
+            <div>
+              <h3>Address</h3>
+              <p>{formattedAddress}</p>
+            </div>
+            <div>
+              <h3>Phone</h3>
+              <p>{telephone}</p>
+            </div>
+
+            <button onClick={()=> {
+              setRandomPlace(randomResultGenerator.next().value)
+            }}>No! That Place Looks Awful</button>
+            <button onClick={()=> {
+              setStatus(STATUS.LOCATION_NOT_FOUND)
+              setRadius(4000)
+            }}>My Location is Wrong</button>
+          </div>)
+      } else {
+        return null;
+      }
+    }
+
     return (
-      <>
-        <h1>Why dont you eat Here?</h1>
+      <div style={{display: 'flex'}}>
         {renderLoadingScreen()}
         {renderLocationInputScreen()}
         <div id={'test'} style={{ width: '100%', margin: '0 auto', height: '100vh' }}>
           <Map {...mapProps} />
         </div>
-        {results.length > 0 ? <div style={{position: 'absolute', bottom: 100, zIndex: 10, left: 200}}>
-          <button onClick={()=> {
-            setRandomPlace(randomResultGenerator.next().value)
-          }}>No! That Place Looks Awful</button>
-        </div> : null}
-      </>
+        {renderRandomPlaceDetails()}
+      </div>
     )
   };
 
