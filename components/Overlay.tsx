@@ -15,7 +15,7 @@ interface OverlayProps {
   visible: boolean
   status: string
   title: string
-  children?: React.Component
+  children?: React.ReactElement
 }
 export const Overlay: React.FC<OverlayProps> = ({visible, status, title, children }) => {
   return visible ?

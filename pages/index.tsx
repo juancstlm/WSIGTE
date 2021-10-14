@@ -42,11 +42,11 @@ export default function Home() {
     });
     const [userCoordinates, setUserCoordinates] = useState<mapkit.Coordinate>();
     const [results, setResults] = useState([]);
-    const [randomResultGenerator, setRandomResultsGenerator] = useState();
-    const [randomPlace, setRandomPlace] = useState();
+    const randomResultGenerator = useRef<Generator<mapkit.Place, mapkit.Place, unknown>>();
+    const [randomPlace, setRandomPlace] = useState<mapkit.Place>();
     const [status, setStatus] = useState(STATUS.INIT);
-    const [placeAnnotation, setPlaceAnnotation] = useState();
-    const [path, setPath] = useState();
+    const [placeAnnotation, setPlaceAnnotation] = useState<mapkit.MarkerAnnotation>();
+    const [path, setPath] = useState<mapkit.PolylineOverlay[]>();
     const [locationQuery, setLocationQuery] = useState("");
     const geocoder = useRef<mapkit.Geocoder>();
     const [isOverlayVisible, setIsOverlayVisible] = useState(true);
@@ -95,7 +95,7 @@ export default function Home() {
         map.addAnnotation(userAnnotation);
 
         //pick a random place from the results
-        setRandomPlace(randomResultGenerator.next().value);
+        setRandomPlace(randomResultGenerator.current.next().value);
       }
     }, [results]);
 
@@ -106,6 +106,7 @@ export default function Home() {
           map.removeAnnotation(placeAnnotation);
         }
         if (path) {
+          //@ts-expect-error no types for this yet
           map.removeItems(path);
         }
 
@@ -157,7 +158,7 @@ export default function Home() {
       }
     }, [randomPlace]);
 
-    function* createUniqueRandomGenerator(places) {
+    function* createUniqueRandomGenerator(places: mapkit.Place[]) {
       const available = places;
 
       while (available.length !== 0) {
@@ -198,12 +199,12 @@ export default function Home() {
       });
     };
 
-    const renderLoadingScreen = () => {
-      if (!randomPlace) {
-        return <Overlay />;
-      }
-      return null;
-    };
+    // const renderLoadingScreen = () => {
+    //   if (!randomPlace) {
+    //     return <Overlay />;
+    //   }
+    //   return null;
+    // };
 
     // if (geocoder && status === STATUS.LOCATION_NOT_FOUND) {
     //   return (<div className='loadingScreenContainer'>
@@ -222,9 +223,13 @@ export default function Home() {
     const searchForPlacesToEat = () => {
       setStatus(STATUS.LOOKING_FOR_RESULTS);
       //Create a new point of interest filter
+      //@ts-ignore
       let filters = new mapkit.PointOfInterestFilter.including([
+        //@ts-ignore
         mapkit.PointOfInterestCategory.Bakery,
+        //@ts-ignore
         mapkit.PointOfInterestCategory.Cafe,
+        //@ts-ignore
         mapkit.PointOfInterestCategory.Restaurant,
       ]);
 
@@ -239,6 +244,7 @@ export default function Home() {
         region: searchRegion,
         getsUserLocation: true,
         language: "en-US",
+        //@ts-ignore
         pointOfInterestFilter: filters,
       });
 
@@ -261,7 +267,8 @@ export default function Home() {
         } else {
           setStatus(STATUS.RESULTS_FOUND);
           setIsOverlayVisible(false);
-          setRandomResultsGenerator(createUniqueRandomGenerator(data.places));
+          //@ts-ignore
+          randomResultGenerator.current = createUniqueRandomGenerator(data.places);
           setResults(data.places);
         }
       });
@@ -271,12 +278,12 @@ export default function Home() {
       if (randomPlace) {
         const {
           name,
-          coordinate,
+          //@ts-ignore
           _wpURL,
+          //@ts-ignore
           telephone,
           formattedAddress,
-          fullThoroughfare,
-          pointOfInterestCategory,
+          //@ts-ignore
           urls,
         } = randomPlace;
         return (
@@ -306,10 +313,10 @@ export default function Home() {
                 <h3>Phone</h3>
                 <p className="locationInfo_section_paragraph">{telephone}</p>
               </div>
-              {urls.length > 0 ? (
+              {(urls as string[]).length > 0 ? (
                 <div className="locationInfoSection">
                   <h3>Websites</h3>
-                  {urls.map((url) => (
+                  {(urls as string[]).map((url) => (
                     <a href={url}>{url}</a>
                   ))}
                 </div>
@@ -318,7 +325,7 @@ export default function Home() {
             <div className="button_bar">
               <button
                 onClick={() => {
-                  let newPlace = randomResultGenerator.next();
+                  let newPlace = randomResultGenerator.current.next();
                   newPlace.done
                     ? searchForPlacesToEat()
                     : setRandomPlace(newPlace.value);
