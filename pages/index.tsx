@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from "react";
 import { Map, MapkitProvider, Marker, useMap } from "react-mapkit";
 import { Overlay } from "../components/Overlay";
 import * as React from "react";
-// import { getYelpData } from '../services/api';
+
 import Bugsnag from "@bugsnag/js";
 import BugsnagPluginReact from "@bugsnag/plugin-react";
 import useAddSense from "../shared/hooks/use-addsense";

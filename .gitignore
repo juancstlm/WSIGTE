@@ -43,3 +43,6 @@ key.pem
 keytmp.pem
 localhost.crt
 localhost.key
+
+# Build
+out/*
