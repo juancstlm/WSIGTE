@@ -1,12 +1,10 @@
-import Head from "next/head";
 import { useEffect, useState, useRef } from "react";
-import { Map, MapkitProvider, Marker, useMap } from "react-mapkit";
+import { Map, MapkitProvider, useMap } from "react-mapkit";
 import { Overlay } from "../components/Overlay";
 import * as React from "react";
 
 import Bugsnag from "@bugsnag/js";
 import BugsnagPluginReact from "@bugsnag/plugin-react";
-import useAddSense from "../shared/hooks/use-addsense";
 
 Bugsnag.start({
   apiKey: "64e770e7c1fa67c74c6a5e2f2e93512e",
@@ -25,24 +23,34 @@ export const STATUS = {
   LOCATION_NOT_FOUND: "We could not find you, try another address.",
 };
 
-type Coordinates = { 
 
+function* createUniqueRandomGenerator(places: mapkit.Place[], seen: Set<string>) {
+  const available = places;
+
+  const randomIndex = Math.floor(Math.random() * available.length);
+  const place = available[randomIndex];
+  while (!seen.has(getPlaceKey(place))){
+    available.splice(randomIndex, 1);
+    seen.add(place.formattedAddress+place.name)
+    yield place;
+  }
+  return undefined;
 }
 
-interface EventBase<T> {
-  type: string;
-  target: T;
+function getPlaceKey(place:mapkit.Place) {
+  return place.formattedAddress + place.name
 }
 
 export default function Home() {
   const UseMapExample = () => {
     let title = "Where Should I Go To Eat?";
-    const { map, mapProps, setCenter, mapkit, setRegion } = useMap({
+    const { map, mapProps, setCenter, mapkit } = useMap({
       showsUserLocation: true,
     });
     const [userCoordinates, setUserCoordinates] = useState<mapkit.Coordinate>();
-    const [results, setResults] = useState([]);
-    const randomResultGenerator = useRef<Generator<mapkit.Place, mapkit.Place, unknown>>();
+    const randomResultGenerator = useRef<Generator<mapkit.Place, undefined, mapkit.Place>>();
+    const seenResults = useRef(new Set<string>())
+
     const [randomPlace, setRandomPlace] = useState<mapkit.Place>();
     const [status, setStatus] = useState(STATUS.INIT);
     const [placeAnnotation, setPlaceAnnotation] = useState<mapkit.MarkerAnnotation>();
@@ -51,8 +59,6 @@ export default function Home() {
     const geocoder = useRef<mapkit.Geocoder>();
     const [isOverlayVisible, setIsOverlayVisible] = useState(true);
 
-    //addsense Script
-    useAddSense();
     //Add location listener to the map
     useEffect(() => {
       // wait for the map to initialize and the event listeners to be empty
@@ -69,9 +75,6 @@ export default function Home() {
 
     useEffect(() => {
       if (mapkit && userCoordinates && status === STATUS.LOCATION_FOUND) {
-        let span = new mapkit.CoordinateSpan(0.1, 0.1);
-        // let region = new mapkit.CoordinateRegion(userCoordinates, span);
-        // setRegion(region)
         setCenter([userCoordinates.latitude, userCoordinates.longitude]);
         searchForPlacesToEat();
       }
@@ -79,25 +82,32 @@ export default function Home() {
 
     //wait for mapkit to be initialized and create a new geocoder
     useEffect(() => {
-      if (mapkit) {
-        geocoder.current = new mapkit.Geocoder({
-          getsUserLocation: true,
-        });
+      if (!mapkit) {
+        return;
       }
+      geocoder.current = new mapkit.Geocoder({
+        getsUserLocation: true,
+      });
     }, [mapkit]);
 
     useEffect(() => {
-      if (results?.length > 1) {
-        // Place the users location on the map via a MarkerAnnotation
-        let userAnnotation = new mapkit.MarkerAnnotation(userCoordinates);
-        userAnnotation.color = "#f96345";
-        userAnnotation.glyphText = "🏠";
-        map.addAnnotation(userAnnotation);
-
-        //pick a random place from the results
-        setRandomPlace(randomResultGenerator.current.next().value);
+      if (status != STATUS.RESULTS_FOUND) {
+        return;
       }
-    }, [results]);
+
+      // Place the users location on the map via a MarkerAnnotation
+      let userAnnotation = new mapkit.MarkerAnnotation(userCoordinates);
+      userAnnotation.color = "#f96345";
+      userAnnotation.glyphText = "🏠";
+      map.addAnnotation(userAnnotation);
+
+      //pick a random place from the results
+      const rando = randomResultGenerator.current.next().value
+      if (!rando) {
+        return;
+      }
+      setRandomPlace(rando);
+    }, [status]);
 
     useEffect(() => {
       if (randomPlace) {
@@ -110,11 +120,6 @@ export default function Home() {
           map.removeItems(path);
         }
 
-        // //check if yelp has data
-        // if(randomPlace._providerId === 'com.yelp'){
-        //   console.log(randomPlace._providerItemId)
-        //   getYelpData(randomPlace._providerItemId)
-        // }
         let randomPlaceAnnotation = new mapkit.MarkerAnnotation(
           randomPlace.coordinate
         );
@@ -158,18 +163,6 @@ export default function Home() {
       }
     }, [randomPlace]);
 
-    function* createUniqueRandomGenerator(places: mapkit.Place[]) {
-      const available = places;
-
-      while (available.length !== 0) {
-        const randomIndex = Math.floor(Math.random() * available.length);
-        const value = available[randomIndex];
-
-        available.splice(randomIndex, 1);
-        yield value;
-      }
-    }
-
     const handleUserLocationChange = (event :{ coordinate: mapkit.Coordinate; timestamp: Date }) => {
       const { coordinate } = event;
       setStatus(STATUS.LOCATION_FOUND);
@@ -199,47 +192,22 @@ export default function Home() {
       });
     };
 
-    // const renderLoadingScreen = () => {
-    //   if (!randomPlace) {
-    //     return <Overlay />;
-    //   }
-    //   return null;
-    // };
-
-    // if (geocoder && status === STATUS.LOCATION_NOT_FOUND) {
-    //   return (<div className='loadingScreenContainer'>
-    //     <h1 className='loadingScreenTitle'>Where Should I Go To Eat</h1>
-    //     {status === STATUS.INIT ? <p className='loadingScreenSubtitle'>Loading</p> : null}
-    //     <p className='loadingScreenStatus'>{status}</p>
-    //     <input placeholder='Your Location' type='search' onChange={(e) => {
-    //       setLocationQuery(e.target.value)
-    //     }}/>
-    //     <div>
-    //       <button disabled={status=== STATUS.GETTING_YOUR_LOCATION} onClick={geocoderLookup}>Search</button>
-    //     </div>
-    //   </div>)
-    // } return null;
-
     const searchForPlacesToEat = () => {
       setStatus(STATUS.LOOKING_FOR_RESULTS);
       //Create a new point of interest filter
-      //@ts-ignore
-      let filters = new mapkit.PointOfInterestFilter.including([
-        //@ts-ignore
+        //@ts-expect-error not typed
+        let filters = new mapkit.PointOfInterestFilter.including([
+        //@ts-expect-error not typed
         mapkit.PointOfInterestCategory.Bakery,
-        //@ts-ignore
+        //@ts-expect-error not typed
         mapkit.PointOfInterestCategory.Cafe,
-        //@ts-ignore
+        //@ts-expect-error not typed
         mapkit.PointOfInterestCategory.Restaurant,
       ]);
 
-      // let pointOfInterestSearch = new mapkit.PointsOfInterestSearch({
-      //   center: userCoordinates,
-      //   pointOfInterestFilter: filters,
-      //   radius: searchRadius,
-      // })
       let span = new mapkit.CoordinateSpan(1, 1);
       let searchRegion = new mapkit.CoordinateRegion(userCoordinates, span);
+
       let pointOfInterestSearch = new mapkit.Search({
         region: searchRegion,
         getsUserLocation: true,
@@ -251,26 +219,25 @@ export default function Home() {
       pointOfInterestSearch.search("Food", (error, data) => {
         if (error) {
           // TODO handle error
-          console.warn("error while searching ");
+          console.warn("error while searching");
           return;
         }
 
-        if (data.places.length === 0) {
+        if (!data.places.length) {
           setStatus(STATUS.NO_RESULTS_FOUND);
-          //no places found increase the radius
-          // if(searchRadius < MAX_RADIUS){
-          //   setRadius(searchRadius * 2)
-          //   searchForPlacesToEat(searchRadius * 2)
-          // } else {
-          //   setStatus(STATUS.NO_RESULTS_FOUND)
-          // }
-        } else {
-          setStatus(STATUS.RESULTS_FOUND);
-          setIsOverlayVisible(false);
-          //@ts-ignore
-          randomResultGenerator.current = createUniqueRandomGenerator(data.places);
-          setResults(data.places);
+          return;
         }
+        
+        // Filter out the ones already seen
+        const filteredResults = data.places.filter((place) => !seenResults.current.has(getPlaceKey(place)))
+        if (!filteredResults.length){
+          setStatus(STATUS.NO_RESULTS_FOUND);
+          return;
+        }
+
+        setStatus(STATUS.RESULTS_FOUND);
+        setIsOverlayVisible(false);
+        randomResultGenerator.current = createUniqueRandomGenerator(filteredResults, seenResults.current);
       });
     };
 
@@ -298,7 +265,6 @@ export default function Home() {
                 ) : (
                   <h2>{name}</h2>
                 )}
-                {/*<p>{pointOfInterestCategory}</p>*/}
               </div>
               <div className="locationInfoSection">
                 <h3>Address</h3>
@@ -307,7 +273,6 @@ export default function Home() {
                     {formattedAddress}
                   </a>
                 </a>
-                {/*<a href={`geo:${coordinate.latitude},${coordinate.longitude}`} target="_blank" className='locationInfo_section_paragraph'>{formattedAddress}</a>*/}
               </div>
               <div className="locationInfoSection">
                 <h3>Phone</h3>
@@ -315,7 +280,7 @@ export default function Home() {
               </div>
               {(urls as string[]).length > 0 ? (
                 <div className="locationInfoSection">
-                  <h3>Websites</h3>
+                  <h3>Website</h3>
                   {(urls as string[]).map((url) => (
                     <a href={url}>{url}</a>
                   ))}
@@ -391,14 +356,6 @@ export default function Home() {
           <Map {...mapProps} />
         </div>
         {renderRandomPlaceDetails()}
-        {/*<div className='addSense'>*/}
-        {/*  <AdSense.Google*/}
-        {/*  client="ca-pub-1977255269343770"*/}
-        {/*  slot="7259870550"*/}
-        {/*  style={{ width: 500, height: 200 }}*/}
-        {/*  ayout='in-article'*/}
-        {/*  format=""*/}
-        {/*/></div>*/}
       </div>
     );
   };
