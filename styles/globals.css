@@ -1,0 +1,174 @@
+@import url("https://fonts.googleapis.com/css2?family=Rajdhani:wght@700&display=swap");
+html {
+  font-family: Rajdhani, sans-serif;
+  font-size: 62.5%;
+}
+body {
+  padding: 0;
+  margin: 0;
+}
+
+a {
+  text-decoration: underline;
+  color: #ff6e30;
+}
+* {
+  box-sizing: border-box;
+}
+h1 {
+  font-weight: 300;
+  z-index: 1;
+  padding: 1.5rem;
+  margin: 0;
+  min-width: 30rem;
+}
+h2 {
+  color: #ff6e30;
+  font-size: 2rem;
+  margin-left: 1rem;
+}
+h3 {
+  margin-bottom: 0;
+  margin-top: 0.5rem;
+}
+.sidebarContainer {
+  width: 45rem;
+  height: 100vh;
+  background-color: #f4f4f4;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.placeTitle {
+  color: #ff6e30;
+  font-size: 2rem;
+  padding-left: 1.5rem;
+  text-decoration: underline;
+}
+button {
+  text-align: center;
+  width: 90%;
+  font-weight: 300;
+  color: white;
+  font-size: 2.4rem;
+  font-family: Rajdhani, sans-serif;
+  background-color: #ff6e30;
+  z-index: 1;
+  padding: 0.5rem 1.6rem;
+  margin: 0.5rem;
+  min-width: 22rem;
+  border-radius: 1rem;
+  border: none;
+}
+
+.loadingScreenContainer {
+  height: 100%;
+  width: 100%;
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  background-color: #f4f4f4;
+  justify-content: flex-start;
+  align-items: center;
+}
+.loadingScreenTitle {
+  text-align: center;
+  font-size: 2.8rem;
+}
+.loadingScreenSubtitle {
+  font-size: 1.6rem;
+}
+.loadingScreenStatus {
+  font-size: 1.6rem;
+}
+input {
+  background-color: transparent;
+  text-align: center;
+  font-size: 1.8rem;
+  font-family: Rajdhani, sans-serif;
+  border-bottom-width: 0.1rem;
+  border-bottom-color: #1e252b;
+  border-top-width: 0;
+  border-left-width: 0;
+  border-right-width: 0;
+}
+input:focus {
+  outline: none;
+  border-bottom-width: 0.2rem;
+  border-bottom-color: #ff6e30;
+}
+.locationInfoHeader {
+  padding-bottom: 0;
+}
+.locationInfoSection {
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+  margin-bottom: 0.6rem;
+}
+.locationInfo_section_paragraph {
+  margin-top: 0.2rem;
+  margin-bottom: 0.2rem;
+}
+.button_secondary {
+  background-color: transparent;
+  border: 0.2rem solid #1e252b;
+  color: #1e252b;
+}
+.button_disabled {
+  background-color: #72757c;
+}
+.addSense {
+  width: 500px;
+  height: 200px;
+  bottom: 30px;
+  left: 30px;
+  position: absolute;
+  z-index: 300;
+}
+.container {
+  display: flex;
+}
+.mapContainer {
+  width: 100%;
+  margin: 0 auto;
+  height: 100vh;
+}
+.button_bar {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+.place_details {
+  margin-left: 1rem;
+  margin-right: 1rem;
+}
+@media (max-width: 40rem) {
+  .container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: -webkit-fill-available;
+  }
+  .mapContainer {
+    width: 100%;
+    height: 80%;
+  }
+  .sidebarContainer {
+    width: -webkit-fill-available;
+    background-color: #f4f4f4;
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    justify-content: space-between;
+  }
+}
+/*@font-face {*/
+/*  font-family: Rajdhani;*/
+/*  font-style: normal;*/
+/*  font-weight: 700;*/
+/*  components: local("Rajdhani Bold"), local("Rajdhani-Bold"),*/
+/*  url(https://fonts.gstatic.com/s/rajdhani/v5/kcO_Mk7pjy8jlu86STaVz50EAVxt0G0biEntp43Qt6E.ttf)*/
+/*  format("truetype");*/
+/*}*/
