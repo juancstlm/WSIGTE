@@ -5,7 +5,7 @@
       "node_modules/@types"
     ],
     "jsx": "preserve",
-    "target": "es5",
+    "target": "esnext",
     "lib": [
       "dom",
       "dom.iterable",
