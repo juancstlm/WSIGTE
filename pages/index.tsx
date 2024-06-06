@@ -2,16 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { Map, MapkitProvider, useMap } from "react-mapkit";
 import { Overlay } from "../components/Overlay";
 import * as React from "react";
-
-import Bugsnag from "@bugsnag/js";
-import BugsnagPluginReact from "@bugsnag/plugin-react";
-
-Bugsnag.start({
-  apiKey: "64e770e7c1fa67c74c6a5e2f2e93512e",
-  plugins: [new BugsnagPluginReact()],
-});
-
-const ErrorBoundary = Bugsnag.getPlugin("react").createErrorBoundary(React);
+import { ErrorBoundary } from "../components/ErrorBoundary";
 
 export const STATUS = {
   INIT: "Initializing",
@@ -23,22 +14,24 @@ export const STATUS = {
   LOCATION_NOT_FOUND: "We could not find you, try another address.",
 };
 
-
-function* createUniqueRandomGenerator(places: mapkit.Place[], seen: Set<string>) {
+function* createUniqueRandomGenerator(
+  places: mapkit.Place[],
+  seen: Set<string>
+) {
   const available = places;
 
   const randomIndex = Math.floor(Math.random() * available.length);
   const place = available[randomIndex];
-  while (!seen.has(getPlaceKey(place))){
+  while (!seen.has(getPlaceKey(place))) {
     available.splice(randomIndex, 1);
-    seen.add(place.formattedAddress+place.name)
+    seen.add(place.formattedAddress + place.name);
     yield place;
   }
   return undefined;
 }
 
-function getPlaceKey(place:mapkit.Place) {
-  return place.formattedAddress + place.name
+function getPlaceKey(place: mapkit.Place) {
+  return place.formattedAddress + place.name;
 }
 
 export default function Home() {
@@ -48,30 +41,78 @@ export default function Home() {
       showsUserLocation: true,
     });
     const [userCoordinates, setUserCoordinates] = useState<mapkit.Coordinate>();
-    const randomResultGenerator = useRef<Generator<mapkit.Place, undefined, mapkit.Place>>();
-    const seenResults = useRef(new Set<string>())
+    const randomResultGenerator =
+      useRef<Generator<mapkit.Place, undefined, mapkit.Place>>();
+    const seenResults = useRef(new Set<string>());
 
     const [randomPlace, setRandomPlace] = useState<mapkit.Place>();
     const [status, setStatus] = useState(STATUS.INIT);
-    const [placeAnnotation, setPlaceAnnotation] = useState<mapkit.MarkerAnnotation>();
+    const [placeAnnotation, setPlaceAnnotation] =
+      useState<mapkit.MarkerAnnotation>();
     const [path, setPath] = useState<mapkit.PolylineOverlay[]>();
     const [locationQuery, setLocationQuery] = useState("");
     const geocoder = useRef<mapkit.Geocoder>();
     const [isOverlayVisible, setIsOverlayVisible] = useState(true);
+
+    const handleUserLocationChange = (event: {
+      coordinate: mapkit.Coordinate;
+      timestamp: Date;
+    }) => {
+      const { coordinate } = event;
+      setStatus(STATUS.LOCATION_FOUND);
+      setUserCoordinates(coordinate);
+    };
+
+    const handleUserLocationError = (error?: {
+      code: number;
+      message: string;
+    }) => {
+      setStatus(STATUS.LOCATION_NOT_FOUND);
+      error && console.warn(`Error ${error.code}, ${error.message}`);
+    };
 
     //Add location listener to the map
     useEffect(() => {
       // wait for the map to initialize and the event listeners to be empty
       if (map && status === STATUS.INIT) {
         setStatus(STATUS.GETTING_YOUR_LOCATION);
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const userCoords = new mapkit.Coordinate(
+              pos.coords.latitude,
+              pos.coords.longitude
+            );
+            setStatus(STATUS.LOCATION_FOUND);
+            setUserCoordinates(userCoords);
+          },
+          (err) => {
+            // TODO
+            // Bugsnag._notify(err);
+          },
+          {
+            timeout: 1000, // 1 sec,
+            maximumAge: 1000 * 60 * 15, // 15 min
+          }
+        );
+
         map.addEventListener("user-location-change", handleUserLocationChange);
         map.addEventListener("user-location-error", handleUserLocationError);
         setTimeout(() => {
-          handleUserLocationError()
-        }, 10000)
+          handleUserLocationError();
+        }, 10000);
       }
-    }, [map, status]);
 
+      return () => {
+        map?.removeEventListener(
+          "user-location-change",
+          handleUserLocationChange
+        );
+        map?.removeEventListener(
+          "user-location-error",
+          handleUserLocationError
+        );
+      };
+    }, [map, status]);
 
     useEffect(() => {
       if (mapkit && userCoordinates && status === STATUS.LOCATION_FOUND) {
@@ -102,7 +143,7 @@ export default function Home() {
       map.addAnnotation(userAnnotation);
 
       //pick a random place from the results
-      const rando = randomResultGenerator.current.next().value
+      const rando = randomResultGenerator.current.next().value;
       if (!rando) {
         return;
       }
@@ -163,20 +204,6 @@ export default function Home() {
       }
     }, [randomPlace]);
 
-    const handleUserLocationChange = (event :{ coordinate: mapkit.Coordinate; timestamp: Date }) => {
-      const { coordinate } = event;
-      setStatus(STATUS.LOCATION_FOUND);
-      setUserCoordinates(coordinate);
-      console.log("User Location Changed", coordinate);
-      map.removeEventListener("user-location-change", handleUserLocationChange);
-      map.removeEventListener("user-location-error", handleUserLocationError);
-    };
-
-    const handleUserLocationError = (error?: { code: number; message: string }) => {
-      setStatus(STATUS.LOCATION_NOT_FOUND);
-      error && console.warn(`Error ${error.code}, ${error.message}`);
-    };
-
     const geocoderLookup = () => {
       setStatus(STATUS.GETTING_YOUR_LOCATION);
       //remove event listeners as location is being handled by the geocoder.
@@ -192,11 +219,11 @@ export default function Home() {
       });
     };
 
-    const searchForPlacesToEat = () => {
+    const searchForPlacesToEat = (query?: string) => {
       setStatus(STATUS.LOOKING_FOR_RESULTS);
       //Create a new point of interest filter
-        //@ts-expect-error not typed
-        let filters = new mapkit.PointOfInterestFilter.including([
+      //@ts-expect-error not typed
+      let filters = new mapkit.PointOfInterestFilter.including([
         //@ts-expect-error not typed
         mapkit.PointOfInterestCategory.Bakery,
         //@ts-expect-error not typed
@@ -227,17 +254,22 @@ export default function Home() {
           setStatus(STATUS.NO_RESULTS_FOUND);
           return;
         }
-        
+
         // Filter out the ones already seen
-        const filteredResults = data.places.filter((place) => !seenResults.current.has(getPlaceKey(place)))
-        if (!filteredResults.length){
+        const filteredResults = data.places.filter(
+          (place) => !seenResults.current.has(getPlaceKey(place))
+        );
+        if (!filteredResults.length) {
           setStatus(STATUS.NO_RESULTS_FOUND);
           return;
         }
 
         setStatus(STATUS.RESULTS_FOUND);
         setIsOverlayVisible(false);
-        randomResultGenerator.current = createUniqueRandomGenerator(filteredResults, seenResults.current);
+        randomResultGenerator.current = createUniqueRandomGenerator(
+          filteredResults,
+          seenResults.current
+        );
       });
     };
 
