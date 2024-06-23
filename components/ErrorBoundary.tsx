@@ -9,4 +9,4 @@ Bugsnag.start({
     releaseStage: process.env.NODE_ENV
   });
 
-export const ErrorBoundary = Bugsnag.getPlugin("react").createErrorBoundary(React);
+export const ErrorBoundary = Bugsnag.getPlugin("react")!.createErrorBoundary(React);

@@ -106,6 +106,10 @@ const Map = () => {
       return;
     }
 
+    if (!mapkit || !userCoordinates || !map || !randomResultGenerator.current) {
+        return
+    }
+
     // Place the users location on the map via a MarkerAnnotation
     let userAnnotation = new mapkit.MarkerAnnotation(userCoordinates);
     userAnnotation.color = "#f96345";
@@ -121,6 +125,9 @@ const Map = () => {
   }, [status]);
 
   useEffect(() => {
+    if (!map || !mapkit || !userCoordinates) {
+        return;
+    }
     if (randomPlace) {
       //Clear current paths and annotations
       if (placeAnnotation) {
@@ -175,6 +182,9 @@ const Map = () => {
   }, [randomPlace]);
 
   const geocoderLookup = () => {
+    if (!map || !geocoder.current) {
+        return;
+    }
     setStatus(STATUS.GETTING_YOUR_LOCATION);
     //remove event listeners as location is being handled by the geocoder.
     map.removeEventListener("user-location-change", handleUserLocationChange);
@@ -190,6 +200,9 @@ const Map = () => {
   };
 
   const searchForPlacesToEat = (query?: string) => {
+    if (!mapkit || !userCoordinates) {
+        return;
+    }
     setStatus(STATUS.LOOKING_FOR_RESULTS);
     //Create a new point of interest filter
     //@ts-expect-error not typed
@@ -292,6 +305,9 @@ const Map = () => {
           <div className="button_bar">
             <button
               onClick={() => {
+                if (!randomResultGenerator.current) {
+                    return;
+                }
                 let newPlace = randomResultGenerator.current.next();
                 newPlace.done
                   ? searchForPlacesToEat()
