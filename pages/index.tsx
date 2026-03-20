@@ -1,29 +1,65 @@
 import * as React from "react";
-import { MapkitProvider } from "react-mapkit";
 
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import Map from "../components/Map";
 
-export const STATUS = {
-  INIT: "Initializing",
-  GETTING_YOUR_LOCATION: "Getting your location",
-  LOCATION_FOUND: "Location Found",
-  LOOKING_FOR_RESULTS: "Looking for Places to Eat",
-  RESULTS_FOUND: "Results Found",
-  NO_RESULTS_FOUND: "Out of Luck Chief",
-  LOCATION_NOT_FOUND: "We could not find you, try another address.",
-};
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL!;
+const TOKEN_URL = `${API_BASE_URL}/token`;
+
+function TokenLoader() {
+  const [token, setToken] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    fetch(TOKEN_URL)
+      .then((res) => {
+        if (!res.ok) throw new Error(`Token endpoint returned ${res.status}`);
+        return res.text();
+      })
+      .then((jwt) => setToken(jwt.trim()))
+      .catch((err) => {
+        console.error("Failed to fetch MapKit token:", err);
+        setError("Unable to load the map. Please try again later.");
+      });
+  }, []);
+
+  if (error) {
+    return (
+      <div
+        className="container"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <p>{error}</p>
+      </div>
+    );
+  }
+
+  if (!token) {
+    return (
+      <div
+        className="container"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <p>Loading map...</p>
+      </div>
+    );
+  }
+
+  return <Map token={token} />;
+}
 
 export default function Home() {
   return (
     <ErrorBoundary>
-      <MapkitProvider
-        tokenOrCallback={
-          "https://8q2oxsizal.execute-api.us-east-1.amazonaws.com/dev/token"
-        }
-      >
-        <Map />
-      </MapkitProvider>
+      <TokenLoader />
     </ErrorBoundary>
   );
 }

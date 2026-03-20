@@ -46,3 +46,6 @@ localhost.key
 
 # Build
 out/*
+
+# Environment variables
+.env.local
