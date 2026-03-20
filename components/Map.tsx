@@ -72,6 +72,8 @@ const Map = ({ token }: MapProps) => {
   const geocoder = useRef<mapkit.Geocoder>();
   const [isOverlayVisible, setIsOverlayVisible] = useState(true);
   const isManualLookup = useRef(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
+  const mapPickerRef = useRef<HTMLDivElement>(null);
 
   const handleMapLoad = useCallback(() => {
     setMapkitReady(true);
@@ -211,6 +213,42 @@ const Map = ({ token }: MapProps) => {
     );
   }, [randomPlace]);
 
+  useEffect(() => {
+    if (!showMapPicker) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        mapPickerRef.current &&
+        !mapPickerRef.current.contains(e.target as Node)
+      ) {
+        setShowMapPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showMapPicker]);
+
+  const getMapServices = () => {
+    if (!userCoordinates || !randomPlace) return [];
+    const dLat = randomPlace.coordinate.latitude;
+    const dLng = randomPlace.coordinate.longitude;
+    const oLat = userCoordinates.latitude;
+    const oLng = userCoordinates.longitude;
+    return [
+      {
+        name: "Apple Maps",
+        url: `https://maps.apple.com/?saddr=${oLat},${oLng}&daddr=${dLat},${dLng}&dirflg=d`,
+      },
+      {
+        name: "Google Maps",
+        url: `https://www.google.com/maps/dir/?api=1&origin=${oLat},${oLng}&destination=${dLat},${dLng}&travelmode=driving`,
+      },
+      {
+        name: "Waze",
+        url: `https://waze.com/ul?ll=${dLat},${dLng}&navigate=yes`,
+      },
+    ];
+  };
+
   const geocoderLookup = () => {
     if (!geocoder.current) return;
     isManualLookup.current = true;
@@ -345,6 +383,27 @@ const Map = ({ token }: MapProps) => {
           ) : null}
         </div>
         <div className="button_bar">
+          <div className="take_me_there_wrapper" ref={mapPickerRef}>
+            <button onClick={() => setShowMapPicker((prev) => !prev)}>
+              Take Me There!
+            </button>
+            {showMapPicker && (
+              <div className="map_picker_dropdown">
+                {getMapServices().map((service) => (
+                  <a
+                    key={service.name}
+                    className="map_picker_option"
+                    href={service.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShowMapPicker(false)}
+                  >
+                    {service.name}
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
           <button
             onClick={() => {
               if (!randomResultGenerator.current) return;

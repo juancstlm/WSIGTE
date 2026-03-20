@@ -155,6 +155,46 @@ input:focus {
   margin-left: 1rem;
   margin-right: 1rem;
 }
+.take_me_there_wrapper {
+  position: relative;
+  width: 90%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.take_me_there_wrapper button {
+  width: 100%;
+  background-color: #1e8c45;
+}
+.map_picker_dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+  background: white;
+  border-radius: 0.8rem;
+  box-shadow: 0 0.4rem 1.6rem rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin-bottom: 0.4rem;
+  z-index: 10;
+}
+.map_picker_option {
+  padding: 1rem 1.4rem;
+  font-size: 1.6rem;
+  color: #1e252b;
+  text-decoration: none;
+  text-align: center;
+  transition: background-color 0.15s;
+}
+.map_picker_option:hover {
+  background-color: #f0f0f0;
+}
+.map_picker_option + .map_picker_option {
+  border-top: 1px solid #e8e8e8;
+}
 @media (max-width: 40rem) {
   h1 {
     min-width: auto;
