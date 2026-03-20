@@ -5,17 +5,47 @@ import { useIsDev } from "../shared/hooks";
 
 import "../styles/globals.css";
 
+const SITE_URL = "https://wsigte.com";
+const SITE_TITLE = "Where Should I Go To Eat? | Random Restaurant Finder";
+const SITE_DESCRIPTION =
+  "Can't decide where to eat? Get a random restaurant recommendation near you instantly. Discover local restaurants, cafes, and bakeries with directions — no more decision fatigue.";
+
 function MyApp({ Component, pageProps }) {
   const devMode = useIsDev();
   return (
     <>
       <Head>
-        <meta name="applicationName" content="WSIGTE" />
-        <meta name="title" content="WSIGTE | Where Should I Go To Eat" />
-        <meta name="description" content="Discover random places to eat near you. Find your next favorite restaurant effortlessly!" />
-        <meta name="keywords" content="restaurants, food recommendations, places to eat, nearby dining, best restaurants, food guide, local eateries, dining options, restaurant reviews, foodie, dine out, eat out, restaurant finder, culinary destinations, dining recommendations" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <title>{SITE_TITLE}</title>
+        <meta name="description" content={SITE_DESCRIPTION} />
+        <meta name="keywords" content="where to eat, random restaurant picker, restaurant finder near me, food recommendations, places to eat nearby, lunch ideas, dinner ideas, local restaurants, cafe finder, what to eat, decide where to eat, nearby dining, food roulette" />
         <meta name="author" content="Juan Castillo" />
-        <meta name="creator" content="Juan Castillo" />
+        <link rel="canonical" href={SITE_URL} />
+
+        {/* Open Graph */}
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content={SITE_URL} />
+        <meta property="og:title" content={SITE_TITLE} />
+        <meta property="og:description" content={SITE_DESCRIPTION} />
+        <meta property="og:site_name" content="WSIGTE" />
+        <meta property="og:locale" content="en_US" />
+
+        {/* Twitter Card */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={SITE_TITLE} />
+        <meta name="twitter:description" content={SITE_DESCRIPTION} />
+
+        {/* Theme & Mobile */}
+        <meta name="theme-color" content="#ff6e30" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="WSIGTE" />
+        <meta name="application-name" content="WSIGTE" />
+
+        {/* Favicon */}
+        <link rel="icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="manifest" href="/manifest.json" />
       </Head>
       {!devMode && (
         <>

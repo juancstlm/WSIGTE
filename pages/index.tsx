@@ -1,10 +1,32 @@
 import * as React from "react";
+import Head from "next/head";
 
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import Map from "../components/Map";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL!;
 const TOKEN_URL = `${API_BASE_URL}/token`;
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  name: "Where Should I Go To Eat?",
+  alternateName: "WSIGTE",
+  url: "https://wsigte.com",
+  description:
+    "Can't decide where to eat? Get a random restaurant recommendation near you instantly.",
+  applicationCategory: "LifestyleApplication",
+  operatingSystem: "All",
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+  },
+  author: {
+    "@type": "Person",
+    name: "Juan Castillo",
+  },
+};
 
 function TokenLoader() {
   const [token, setToken] = React.useState<string | null>(null);
@@ -58,8 +80,18 @@ function TokenLoader() {
 
 export default function Home() {
   return (
-    <ErrorBoundary>
-      <TokenLoader />
-    </ErrorBoundary>
+    <>
+      <Head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </Head>
+      <main>
+        <ErrorBoundary>
+          <TokenLoader />
+        </ErrorBoundary>
+      </main>
+    </>
   );
 }
