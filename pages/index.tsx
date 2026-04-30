@@ -5,7 +5,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import Map from "../components/Map";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL!;
-const TOKEN_URL = `${API_BASE_URL}/token`;
+const TOKEN_URL = `${API_BASE_URL}/v1/token`;
 
 const jsonLd = {
   "@context": "https://schema.org",
