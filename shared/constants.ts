@@ -1,0 +1,32 @@
+export const LOADING_LINES = [
+  "Triangulating your hunger…",
+  "Asking the city where to eat…",
+  "Consulting questionable sources…",
+  "Locating you. Don't move.",
+  "Arguing with the algorithm…",
+  "Ignoring your dietary preferences…",
+  "Scanning every kitchen in range…",
+  "Pretending to think hard…",
+  "Cross-referencing vibes with data…",
+  "Eliminating places you can't afford…",
+  "Asking a stranger for directions…",
+  "Running out of patience faster than you…",
+];
+
+export const REJECTIONS = [
+  "Noted. That place is dead to us.",
+  "Coward. Trying again.",
+  "Fine. Picking something else.",
+  "Your pickiness is being logged.",
+  "Okay, calm down. Spinning again.",
+  "Wow. Rejected instantly. Cold.",
+  "You didn't even think about it.",
+  "That place has feelings, you know.",
+  "We'll pretend this never happened.",
+  "Bold opinion from someone who can't choose.",
+  "Interesting. Wrong, but interesting.",
+  "The algorithm is judging you.",
+  "Sure. You're definitely not the problem.",
+  "Another one bites the dust.",
+  "We're running out of restaurants and patience.",
+];
