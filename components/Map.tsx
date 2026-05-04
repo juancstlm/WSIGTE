@@ -1,8 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Map as MapKitMap,
-  Marker,
-  Polyline,
 } from "mapkit-react";
 import type {
   Coordinate,
@@ -11,12 +9,19 @@ import type {
 } from "mapkit-react";
 
 import { STATUS } from "../types";
-import { Overlay } from "./Overlay";
 import { createUniqueRandomGenerator, getPlaceKey } from "../shared/utils";
+import { REJECTIONS } from "../shared/constants";
+import { Header } from "./Header";
+import { LoadingScreen } from "./LoadingScreen";
+import { NotFoundScreen } from "./NotFoundScreen";
+import { ResultScreen } from "./ResultScreen";
+import { ShareScreen } from "./ShareScreen";
 
 interface MapProps {
   token: string;
 }
+
+type Screen = "loading" | "notfound" | "result" | "share";
 
 function fitMapToPoints(
   map: mapkit.Map,
@@ -55,25 +60,26 @@ function fitMapToPoints(
 }
 
 const Map = ({ token }: MapProps) => {
-  const title = "Where Should I Go To Eat?";
-
   const mapRef = useRef<mapkit.Map | null>(null);
   const [mapkitReady, setMapkitReady] = useState(false);
 
   const [userCoordinates, setUserCoordinates] = useState<Coordinate>();
   const randomResultGenerator =
-    useRef<Generator<mapkit.Place, undefined, mapkit.Place>>();
+    useRef<Generator<mapkit.Place, undefined, mapkit.Place> | null>(null);
   const seenResults = useRef(new Set<string>());
 
   const [randomPlace, setRandomPlace] = useState<mapkit.Place>();
   const [status, setStatus] = useState(STATUS.INIT);
   const [routePoints, setRoutePoints] = useState<Coordinate[][]>([]);
-  const [locationQuery, setLocationQuery] = useState("");
-  const geocoder = useRef<mapkit.Geocoder>();
-  const [isOverlayVisible, setIsOverlayVisible] = useState(true);
+  const geocoder = useRef<mapkit.Geocoder | null>(null);
   const isManualLookup = useRef(false);
   const [showMapPicker, setShowMapPicker] = useState(false);
   const mapPickerRef = useRef<HTMLDivElement>(null);
+
+  const [screen, setScreen] = useState<Screen>("loading");
+  const [pickNumber, setPickNumber] = useState(0);
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectionLine, setRejectionLine] = useState("");
 
   const handleMapLoad = useCallback(() => {
     setMapkitReady(true);
@@ -116,7 +122,6 @@ const Map = ({ token }: MapProps) => {
     []
   );
 
-  // Browser geolocation fallback + timeout (skip during manual geocoding)
   useEffect(() => {
     if (!mapkitReady || status !== STATUS.GETTING_YOUR_LOCATION) return;
     if (isManualLookup.current) return;
@@ -143,13 +148,11 @@ const Map = ({ token }: MapProps) => {
     return () => clearTimeout(timeoutId);
   }, [mapkitReady, status, handleUserLocationError]);
 
-  // Initialize geocoder when mapkit is ready
   useEffect(() => {
     if (!mapkitReady) return;
     geocoder.current = new mapkit.Geocoder({ getsUserLocation: true });
   }, [mapkitReady]);
 
-  // Center map and search when location is found
   useEffect(() => {
     if (mapkitReady && userCoordinates && status === STATUS.LOCATION_FOUND) {
       if (mapRef.current) {
@@ -165,7 +168,6 @@ const Map = ({ token }: MapProps) => {
     }
   }, [mapkitReady, userCoordinates, status]);
 
-  // Pick a random place when results are found
   useEffect(() => {
     if (status !== STATUS.RESULTS_FOUND) return;
     if (!randomResultGenerator.current) return;
@@ -173,9 +175,10 @@ const Map = ({ token }: MapProps) => {
     const rando = randomResultGenerator.current.next().value;
     if (!rando) return;
     setRandomPlace(rando);
+    setPickNumber((n) => n + 1);
+    setScreen("result");
   }, [status]);
 
-  // Get directions when a random place is selected
   useEffect(() => {
     if (!mapkitReady || !userCoordinates || !randomPlace) return;
 
@@ -227,6 +230,21 @@ const Map = ({ token }: MapProps) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showMapPicker]);
 
+  useEffect(() => {
+    if (
+      status === STATUS.INIT ||
+      status === STATUS.GETTING_YOUR_LOCATION ||
+      status === STATUS.LOOKING_FOR_RESULTS
+    ) {
+      setScreen((prev) => prev === "result" ? prev : "loading");
+    } else if (
+      status === STATUS.LOCATION_NOT_FOUND ||
+      status === STATUS.NO_RESULTS_FOUND
+    ) {
+      setScreen("notfound");
+    }
+  }, [status]);
+
   const getMapServices = () => {
     if (!userCoordinates || !randomPlace) return [];
     const dLat = randomPlace.coordinate.latitude;
@@ -249,13 +267,13 @@ const Map = ({ token }: MapProps) => {
     ];
   };
 
-  const geocoderLookup = () => {
+  const geocoderLookup = (query: string) => {
     if (!geocoder.current) return;
     isManualLookup.current = true;
     setStatus(STATUS.GETTING_YOUR_LOCATION);
     setRandomPlace(undefined);
     setRoutePoints([]);
-    geocoder.current.lookup(locationQuery, (error, data) => {
+    geocoder.current.lookup(query, (error, data) => {
       isManualLookup.current = false;
       if (error || !data?.results?.length) {
         setStatus(STATUS.LOCATION_NOT_FOUND);
@@ -284,13 +302,9 @@ const Map = ({ token }: MapProps) => {
     const span = new mapkit.CoordinateSpan(1, 1);
     const searchRegion = new mapkit.CoordinateRegion(coord, span);
 
-    // @ts-expect-error PointOfInterestFilter.including not typed
     const filters = mapkit.PointOfInterestFilter.including([
-      // @ts-expect-error PointOfInterestCategory not typed
       mapkit.PointOfInterestCategory.Bakery,
-      // @ts-expect-error PointOfInterestCategory not typed
       mapkit.PointOfInterestCategory.Cafe,
-      // @ts-expect-error PointOfInterestCategory not typed
       mapkit.PointOfInterestCategory.Restaurant,
     ]);
 
@@ -298,7 +312,6 @@ const Map = ({ token }: MapProps) => {
       region: searchRegion,
       getsUserLocation: true,
       language: "en-US",
-      // @ts-ignore pointOfInterestFilter not typed
       pointOfInterestFilter: filters,
     });
 
@@ -306,13 +319,11 @@ const Map = ({ token }: MapProps) => {
       if (error) {
         console.warn("Search error:", error);
         setStatus(STATUS.NO_RESULTS_FOUND);
-        setIsOverlayVisible(true);
         return;
       }
 
       if (!data.places.length) {
         setStatus(STATUS.NO_RESULTS_FOUND);
-        setIsOverlayVisible(true);
         return;
       }
 
@@ -321,12 +332,10 @@ const Map = ({ token }: MapProps) => {
       );
       if (!filteredResults.length) {
         setStatus(STATUS.NO_RESULTS_FOUND);
-        setIsOverlayVisible(true);
         return;
       }
 
       setStatus(STATUS.RESULTS_FOUND);
-      setIsOverlayVisible(false);
       randomResultGenerator.current = createUniqueRandomGenerator(
         filteredResults,
         seenResults.current
@@ -334,172 +343,86 @@ const Map = ({ token }: MapProps) => {
     });
   };
 
-  const renderRandomPlaceDetails = () => {
-    if (!randomPlace) return null;
-
-    const {
-      name,
-      // @ts-ignore
-      _wpURL,
-      // @ts-ignore
-      telephone,
-      formattedAddress,
-      // @ts-ignore
-      urls,
-    } = randomPlace;
-
-    return (
-      <div className="sidebarContainer">
-        <div className="place_details">
-          <div>
-            <h1 className="locationInfoHeader">Why Don&apos;t you Eat At</h1>
-            {_wpURL ? (
-              <a className="placeTitle" href={_wpURL}>
-                {name}
-              </a>
-            ) : (
-              <h2>{name}</h2>
-            )}
-          </div>
-          <div className="locationInfoSection">
-            <h3>Address</h3>
-            <a href={`https://maps.google.com/?q=${formattedAddress}`}>
-              {formattedAddress}
-            </a>
-          </div>
-          <div className="locationInfoSection">
-            <h3>Phone</h3>
-            <p className="locationInfo_section_paragraph">{telephone}</p>
-          </div>
-          {(urls as string[])?.length > 0 ? (
-            <div className="locationInfoSection">
-              <h3>Website</h3>
-              {(urls as string[]).map((url) => (
-                <a key={url} href={url}>
-                  {url}
-                </a>
-              ))}
-            </div>
-          ) : null}
-        </div>
-        <div className="button_bar">
-          <div className="take_me_there_wrapper" ref={mapPickerRef}>
-            <button onClick={() => setShowMapPicker((prev) => !prev)}>
-              Take Me There!
-            </button>
-            {showMapPicker && (
-              <div className="map_picker_dropdown">
-                {getMapServices().map((service) => (
-                  <a
-                    key={service.name}
-                    className="map_picker_option"
-                    href={service.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => setShowMapPicker(false)}
-                  >
-                    {service.name}
-                  </a>
-                ))}
-              </div>
-            )}
-          </div>
-          <button
-            onClick={() => {
-              if (!randomResultGenerator.current) return;
-              const newPlace = randomResultGenerator.current.next();
-              newPlace.done
-                ? searchForPlacesToEat()
-                : setRandomPlace(newPlace.value);
-            }}
-          >
-            No! That Place Looks Awful
-          </button>
-          <button
-            className="button_secondary"
-            onClick={() => {
-              setStatus(STATUS.LOCATION_NOT_FOUND);
-              setIsOverlayVisible(true);
-            }}
-          >
-            My Location is Wrong
-          </button>
-        </div>
-      </div>
+  const handleReject = () => {
+    setRejectionLine(
+      REJECTIONS[Math.floor(Math.random() * REJECTIONS.length)]
     );
+    setRejecting(true);
+    setTimeout(() => {
+      setRejecting(false);
+      if (!randomResultGenerator.current) return;
+      const newPlace = randomResultGenerator.current.next();
+      if (newPlace.done) {
+        setStatus(STATUS.NO_RESULTS_FOUND);
+      } else {
+        setRandomPlace(newPlace.value);
+        setPickNumber((n) => n + 1);
+      }
+    }, 950);
   };
 
-  const renderLocationOverlayChildren = () => {
-    return (
-      <>
-        <input
-          placeholder="Your Location"
-          type="search"
-          onChange={(e) => setLocationQuery(e.target.value)}
-        />
-        <div>
-          <button
-            className={locationQuery ? "" : "button_disabled"}
-            disabled={status === STATUS.GETTING_YOUR_LOCATION || !locationQuery}
-            onClick={geocoderLookup}
-          >
-            Search
-          </button>
-        </div>
-      </>
-    );
+  const handleWrongLocation = () => {
+    setStatus(STATUS.LOCATION_NOT_FOUND);
   };
+
+  const needsHiddenMap = screen === "loading" || screen === "notfound";
 
   return (
-    <div className="container">
-      <Overlay
-        visible={isOverlayVisible}
-        title={title}
-        status={status}
-        children={
-          status === STATUS.LOCATION_NOT_FOUND ||
-          status === STATUS.NO_RESULTS_FOUND
-            ? renderLocationOverlayChildren()
-            : undefined
-        }
-      />
-      <div className="mapContainer">
-        <MapKitMap
-          ref={mapRef}
+    <div className="app-root">
+      {screen !== "share" && <Header />}
+
+      {needsHiddenMap && (
+        <div style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0 }}>
+          <MapKitMap
+            ref={mapRef}
+            token={token}
+            showsUserLocation
+            onLoad={handleMapLoad}
+            onUserLocationChange={handleUserLocationChange}
+            onUserLocationError={handleUserLocationError}
+          />
+        </div>
+      )}
+
+      {screen === "loading" && <LoadingScreen />}
+
+      {screen === "notfound" && (
+        <NotFoundScreen onRetry={geocoderLookup} />
+      )}
+
+      {screen === "result" && randomPlace && (
+        <ResultScreen
+          place={randomPlace}
+          pickNumber={pickNumber}
+          rejecting={rejecting}
+          rejectionLine={rejectionLine}
+          showMapPicker={showMapPicker}
+          mapServices={getMapServices()}
+          onToggleMapPicker={() => setShowMapPicker((prev) => !prev)}
+          onCloseMapPicker={() => setShowMapPicker(false)}
+          onReject={handleReject}
+          onWrongLocation={handleWrongLocation}
+          onShare={() => setScreen("share")}
+          mapPickerRef={mapPickerRef}
+          mapRef={mapRef}
           token={token}
-          showsUserLocation
-          onLoad={handleMapLoad}
+          userCoordinates={userCoordinates}
+          routePoints={routePoints}
+          onMapLoad={handleMapLoad}
           onUserLocationChange={handleUserLocationChange}
           onUserLocationError={handleUserLocationError}
-        >
-          {userCoordinates && randomPlace && (
-            <Marker
-              latitude={userCoordinates.latitude}
-              longitude={userCoordinates.longitude}
-              color="#f96345"
-              glyphText="🏠"
-            />
-          )}
-          {randomPlace && (
-            <Marker
-              latitude={randomPlace.coordinate.latitude}
-              longitude={randomPlace.coordinate.longitude}
-              color="#5688d9"
-              title={randomPlace.name}
-              subtitle={randomPlace.formattedAddress}
-            />
-          )}
-          {routePoints.map((points, i) => (
-            <Polyline
-              key={`route-${i}`}
-              points={points}
-              lineWidth={5}
-              strokeColor="#139cc2"
-            />
-          ))}
-        </MapKitMap>
-      </div>
-      {renderRandomPlaceDetails()}
+        />
+      )}
+
+      {screen === "share" && randomPlace && (
+        <ShareScreen
+          place={randomPlace}
+          token={token}
+          userCoordinates={userCoordinates}
+          routePoints={routePoints}
+          onClose={() => setScreen("result")}
+        />
+      )}
     </div>
   );
 };

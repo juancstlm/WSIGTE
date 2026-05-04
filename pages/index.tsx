@@ -43,11 +43,15 @@ const jsonLd = {
 };
 
 function TokenLoader() {
-  const [token, setToken] = React.useState<string | null>(getCachedToken);
+  const [token, setToken] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (token) return;
+    const cached = getCachedToken();
+    if (cached) {
+      setToken(cached);
+      return;
+    }
     fetch(TOKEN_URL)
       .then((res) => {
         if (!res.ok) throw new Error(`Token endpoint returned ${res.status}`);
@@ -66,14 +70,7 @@ function TokenLoader() {
 
   if (error) {
     return (
-      <div
-        className="container"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
+      <div className="token-screen">
         <p>{error}</p>
       </div>
     );
@@ -81,15 +78,8 @@ function TokenLoader() {
 
   if (!token) {
     return (
-      <div
-        className="container"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <p>Loading map...</p>
+      <div className="token-screen">
+        <p>Loading...</p>
       </div>
     );
   }

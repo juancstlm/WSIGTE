@@ -36,7 +36,7 @@ function MyApp({ Component, pageProps }) {
         <meta name="twitter:description" content={SITE_DESCRIPTION} />
 
         {/* Theme & Mobile */}
-        <meta name="theme-color" content="#ff6e30" />
+        <meta name="theme-color" content="#E04A2A" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="WSIGTE" />
