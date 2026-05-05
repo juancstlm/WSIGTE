@@ -6,21 +6,20 @@ Live at **[wsigte.com](https://wsigte.com)**
 
 ## How It Works
 
-1. The app requests your location (browser geolocation or manual address entry).
+1. The app requests your location (browser geolocation).
 2. It searches nearby restaurants, cafes, and bakeries using MapKit's point-of-interest search.
 3. A random result is selected and displayed on the map with driving directions.
-4. Don't like the suggestion? Hit **"No! That Place Looks Awful"** to get another one.
-5. Location wrong? Hit **"My Location is Wrong"** to enter an address manually.
+4. Don't like the suggestion? Reject it with a snarky message and get another one.
+5. Found a place you want to share? Use the share screen to generate a shareable link.
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Framework | Next.js 14 (static export) |
-| Language | TypeScript / React 18 |
+| Framework | Next.js 16 (static export) |
+| Language | TypeScript / React 19 |
 | Maps | Apple MapKit JS via `mapkit-react` |
 | Error Tracking | Bugsnag (production only) |
-| Analytics | Google Analytics (production only) |
 | Styling | Vanilla CSS with Google Fonts (Rajdhani) |
 
 ## Project Structure
@@ -28,19 +27,27 @@ Live at **[wsigte.com](https://wsigte.com)**
 ```
 pages/
   index.tsx          # Entry point — fetches MapKit JWT token, renders Map
-  _app.js            # Global layout, SEO meta tags, analytics
+  p/[id].tsx         # Shared place page — displays a place via short link
+  _app.js            # Global layout, SEO meta tags
   _document.tsx      # HTML document shell
 components/
   Map.tsx            # Core map logic: location, search, directions, UI
+  Header.tsx         # App header
+  LoadingScreen.tsx  # Loading state with rotating witty messages
+  NotFoundScreen.tsx # Shown when no places are found nearby
+  ResultScreen.tsx   # Displays the selected place with actions
+  ShareScreen.tsx    # Share a place via a generated short link
   Overlay.tsx        # Loading/status overlay shown during init and errors
   ErrorBoundary.tsx  # React error boundary (Bugsnag in prod, console in dev)
 shared/
-  hooks/             # useIsDev hook
+  constants.ts       # Loading lines and rejection messages
+  hooks/             # useIsDev, useAdSense hooks
   utils/             # Random place generator, place deduplication
 services/
-  api.ts             # Legacy Yelp API helper (unused)
+  api.ts             # API helpers
 types/
   index.ts           # STATUS enum for app state machine
+  mapkit.d.ts        # MapKit type declarations
 styles/
   globals.css        # All styles
 public/
@@ -124,4 +131,4 @@ This generates a fully static site in the `out/` directory, ready to be deployed
 
 | Variable | Description |
 |----------|-------------|
-| `NEXT_PUBLIC_API_BASE_URL` | Base URL of the API that serves the MapKit JS JWT token |
+| `NEXT_PUBLIC_API_BASE_URL` | Base URL of the API that serves the MapKit JS JWT token and shared place endpoints |
