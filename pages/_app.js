@@ -7,6 +7,8 @@ import { startSession } from "../shared/utils";
 
 import "../styles/globals.css";
 
+const UMAMI_WEBSITE_ID = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;
+
 const SITE_URL = "https://wsigte.com";
 const SITE_TITLE = "Where Should I Go To Eat? | Random Restaurant Finder";
 const SITE_DESCRIPTION =
@@ -72,11 +74,13 @@ function MyApp({ Component, pageProps }) {
           `,
             }}
           ></Script>
-          <Script
-            strategy="afterInteractive"
-            src="https://analytics.juancastillom.com/mielyboy"
-            data-website-id="e81e93c2-c05a-400f-bc86-9689f601275b"
-          />
+          {UMAMI_WEBSITE_ID && (
+            <Script
+              strategy="afterInteractive"
+              src="https://analytics.juancastillom.com/mielyboy"
+              data-website-id={UMAMI_WEBSITE_ID}
+            />
+          )}
         </>
       )}
       <Component {...pageProps} />

@@ -142,7 +142,7 @@ This generates a fully static site in the `out/` directory, ready to be deployed
 
 ## Analytics
 
-Privacy-friendly analytics via [Umami](https://umami.is/), self-hosted at `analytics.juancastillom.com`. The tracker script is loaded in `pages/_app.js` via `next/script` and is gated behind `useIsDev`, so it only runs in production.
+Privacy-friendly analytics via [Umami](https://umami.is/), self-hosted at `analytics.juancastillom.com`. The tracker script is loaded in `pages/_app.js` via `next/script` and is gated behind `useIsDev`, so it only runs in production builds. The Umami website ID comes from the `NEXT_PUBLIC_UMAMI_WEBSITE_ID` env var, set per Amplify branch — production and staging report to **separate Umami sites** so production stats stay clean.
 
 Custom events are emitted through the helper at `shared/utils/track.ts`, which safely no-ops if Umami hasn't loaded.
 
@@ -175,3 +175,6 @@ Custom events are emitted through the helper at `shared/utils/track.ts`, which s
 | Variable | Description |
 |----------|-------------|
 | `NEXT_PUBLIC_API_BASE_URL` | Base URL of the API that serves the MapKit JS JWT token and shared place endpoints |
+| `NEXT_PUBLIC_UMAMI_WEBSITE_ID` | Umami website ID for the current environment. Set per-branch in Amplify (production branch → prod site ID; staging branch → staging site ID) so each environment reports to its own Umami site. |
+
+> Set these in the AWS Amplify console under **App settings → Environment variables**. Because they're prefixed `NEXT_PUBLIC_`, Next.js inlines them at build time. If `NEXT_PUBLIC_UMAMI_WEBSITE_ID` is missing the Umami `<Script>` simply doesn't render.
