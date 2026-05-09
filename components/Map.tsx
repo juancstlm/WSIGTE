@@ -9,7 +9,7 @@ import type {
 } from "mapkit-react";
 
 import { STATUS } from "../types";
-import { createUniqueRandomGenerator, getPlaceKey, track } from "../shared/utils";
+import { bumpSession, createUniqueRandomGenerator, getPlaceKey, track } from "../shared/utils";
 import { REJECTIONS } from "../shared/constants";
 import { Header } from "./Header";
 import { LoadingScreen } from "./LoadingScreen";
@@ -78,6 +78,7 @@ const Map = ({ token }: MapProps) => {
 
   const [screen, setScreen] = useState<Screen>("loading");
   const [pickNumber, setPickNumber] = useState(0);
+  const pickNumberRef = useRef(0);
   const [rejecting, setRejecting] = useState(false);
   const [rejectionLine, setRejectionLine] = useState("");
 
@@ -126,21 +127,32 @@ const Map = ({ token }: MapProps) => {
     if (!mapkitReady || status !== STATUS.GETTING_YOUR_LOCATION) return;
     if (isManualLookup.current) return;
 
+    let resolved = false;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        resolved = true;
         if (isManualLookup.current) return;
+        track("geolocation_granted");
         setUserCoordinates({
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
         });
         setStatus(STATUS.LOCATION_FOUND);
       },
-      () => {},
+      (err) => {
+        resolved = true;
+        if (err.code === err.PERMISSION_DENIED) {
+          track("geolocation_denied", { code: err.code });
+        } else {
+          track("geolocation_error", { code: err.code, message: err.message });
+        }
+      },
       { timeout: 1000, maximumAge: 1000 * 60 * 15 }
     );
 
     const timeoutId = setTimeout(() => {
       if (!isManualLookup.current) {
+        if (!resolved) track("geolocation_timeout");
         handleUserLocationError();
       }
     }, 10000);
@@ -174,10 +186,13 @@ const Map = ({ token }: MapProps) => {
 
     const rando = randomResultGenerator.current.next().value;
     if (!rando) return;
+    const nextPick = pickNumberRef.current + 1;
+    pickNumberRef.current = nextPick;
     setRandomPlace(rando);
-    setPickNumber((n) => n + 1);
+    setPickNumber(nextPick);
     setScreen("result");
-    track("pick_shown");
+    track("pick_shown", { pickNumber: nextPick });
+    bumpSession("picksShown");
   }, [status]);
 
   useEffect(() => {
@@ -294,6 +309,7 @@ const Map = ({ token }: MapProps) => {
   const searchForPlacesToEat = () => {
     if (!mapkitReady || !userCoordinates) return;
 
+    bumpSession("searches");
     setStatus(STATUS.LOOKING_FOR_RESULTS);
     setRandomPlace(undefined);
     setRoutePoints([]);
@@ -351,6 +367,7 @@ const Map = ({ token }: MapProps) => {
 
   const handleReject = () => {
     track("pick_rejected", { pickNumber });
+    bumpSession("picksRejected");
     setRejectionLine(
       REJECTIONS[Math.floor(Math.random() * REJECTIONS.length)]
     );
@@ -362,8 +379,12 @@ const Map = ({ token }: MapProps) => {
       if (newPlace.done) {
         setStatus(STATUS.NO_RESULTS_FOUND);
       } else {
+        const nextPick = pickNumberRef.current + 1;
+        pickNumberRef.current = nextPick;
         setRandomPlace(newPlace.value);
-        setPickNumber((n) => n + 1);
+        setPickNumber(nextPick);
+        track("pick_shown", { pickNumber: nextPick });
+        bumpSession("picksShown");
       }
     }, 950);
   };

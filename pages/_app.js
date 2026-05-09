@@ -1,7 +1,9 @@
+import { useEffect } from "react";
 import Script from "next/script";
 import Head from "next/head";
 
 import { useIsDev } from "../shared/hooks";
+import { startSession } from "../shared/utils";
 
 import "../styles/globals.css";
 
@@ -12,6 +14,9 @@ const SITE_DESCRIPTION =
 
 function MyApp({ Component, pageProps }) {
   const devMode = useIsDev();
+  useEffect(() => {
+    if (!devMode) startSession();
+  }, [devMode]);
   return (
     <>
       <Head>

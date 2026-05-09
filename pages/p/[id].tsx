@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { Header } from "../../components/Header";
+import { bumpSession, track } from "../../shared/utils";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL!;
 
@@ -29,8 +30,15 @@ export default function SharedPlacePage() {
         if (!res.ok) throw new Error("Not found");
         return res.json();
       })
-      .then(setPlace)
-      .catch(() => setError(true));
+      .then((data) => {
+        setPlace(data);
+        track("shared_place_viewed", { id });
+        bumpSession("sharedPlaceViewed");
+      })
+      .catch(() => {
+        setError(true);
+        track("shared_place_not_found", { id });
+      });
   }, [id]);
 
   const appleMapsUrl = place
@@ -51,7 +59,12 @@ export default function SharedPlacePage() {
             <div className="shared-place-subtext">
               This place link doesn&apos;t exist or has been removed.
             </div>
-            <a href="/" className="btn-primary" style={{ display: "block", textAlign: "center", textDecoration: "none", marginTop: 12 }}>
+            <a
+              href="/"
+              className="btn-primary"
+              style={{ display: "block", textAlign: "center", textDecoration: "none", marginTop: 12 }}
+              onClick={() => track("shared_place_cta_clicked", { cta: "find_somewhere", from: "not_found" })}
+            >
               Find somewhere to eat →
             </a>
           </div>
@@ -103,6 +116,7 @@ export default function SharedPlacePage() {
                 rel="noopener noreferrer"
                 className="btn-take-me"
                 style={{ textDecoration: "none", textAlign: "center" }}
+                onClick={() => track("shared_place_cta_clicked", { cta: "apple_maps", id: place.shortId })}
               >
                 Open in Apple Maps →
               </a>
@@ -112,6 +126,7 @@ export default function SharedPlacePage() {
                 rel="noopener noreferrer"
                 className="btn-wrong-location"
                 style={{ textDecoration: "none", textAlign: "center" }}
+                onClick={() => track("shared_place_cta_clicked", { cta: "google_maps", id: place.shortId })}
               >
                 Open in Google Maps
               </a>
@@ -119,7 +134,12 @@ export default function SharedPlacePage() {
 
             <div className="shared-place-cta">
               <div className="shared-place-cta-text">Can&apos;t decide either?</div>
-              <a href="/" className="btn-awful" style={{ textDecoration: "none", textAlign: "center" }}>
+              <a
+                href="/"
+                className="btn-awful"
+                style={{ textDecoration: "none", textAlign: "center" }}
+                onClick={() => track("shared_place_cta_clicked", { cta: "pick_for_me", id: place.shortId })}
+              >
                 Pick for me →
               </a>
             </div>

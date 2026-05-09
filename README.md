@@ -148,9 +148,18 @@ Custom events are emitted through the helper at `shared/utils/track.ts`, which s
 
 | Event | Where | Data |
 |-------|-------|------|
+| `session_start` | once per visit, on `_app` mount | `{ entry, utm_source?, utm_medium?, utm_campaign?, utm_term?, utm_content? }` |
+| `session_summary` | best-effort on `pagehide`/visibility hidden | `{ searches, picksShown, picksRejected, tookDirections, sharedPlaceViewed }` |
+| `geolocation_granted` | browser geolocation success | — |
+| `geolocation_denied` | user denied permission | `{ code }` |
+| `geolocation_error` | other geolocation failure | `{ code, message }` |
+| `geolocation_timeout` | 10s elapsed without resolution | — |
+| `shared_place_viewed` | `/p/[id]` resolved successfully | `{ id }` |
+| `shared_place_not_found` | `/p/[id]` 404 / fetch error | `{ id }` |
+| `shared_place_cta_clicked` | CTA on `/p/[id]` clicked | `{ cta, id?, from? }` |
 | `results_found` | nearby search succeeded | `{ count }` |
 | `no_results_found` | search returned nothing (or all seen) | `{ reason? }` |
-| `pick_shown` | a random pick is rendered | — |
+| `pick_shown` | a random pick is rendered (fires for every pick, including re-rolls) | `{ pickNumber }` |
 | `pick_rejected` | "That's awful" clicked | `{ pickNumber }` |
 | `wrong_location_clicked` | "Wrong location" clicked | — |
 | `manual_location_lookup` | user submits an address | — |

@@ -46,6 +46,7 @@ localhost.key
 
 # Build
 out/*
+tsconfig.tsbuildinfo
 
 # Environment variables
 .env.local

@@ -1,4 +1,5 @@
 export { track } from "./track";
+export { startSession, bump as bumpSession, flushSummary } from "./session";
 
 export function getPlaceKey(place: mapkit.Place) {
   return place.formattedAddress + place.name;

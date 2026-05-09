@@ -3,7 +3,7 @@ import {
   Marker,
   Polyline,
 } from "mapkit-react";
-import { track } from "../shared/utils";
+import { bumpSession, track } from "../shared/utils";
 import type {
   Coordinate,
   UserLocationChangeEvent,
@@ -208,6 +208,7 @@ export function ResultScreen({
                     rel="noopener noreferrer"
                     onClick={() => {
                       track("map_service_selected", { service: service.name });
+                      bumpSession("tookDirections");
                       onCloseMapPicker();
                     }}
                   >
