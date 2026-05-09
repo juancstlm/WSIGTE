@@ -3,6 +3,7 @@ import {
   Marker,
   Polyline,
 } from "mapkit-react";
+import { track } from "../shared/utils";
 import type {
   Coordinate,
   UserLocationChangeEvent,
@@ -187,7 +188,13 @@ export function ResultScreen({
 
         <div className="result-actions">
           <div className="map-picker-wrapper" ref={mapPickerRef}>
-            <button className="btn-take-me" onClick={onToggleMapPicker}>
+            <button
+              className="btn-take-me"
+              onClick={() => {
+                track("take_me_there_clicked");
+                onToggleMapPicker();
+              }}
+            >
               Take me there →
             </button>
             {showMapPicker && (
@@ -199,7 +206,10 @@ export function ResultScreen({
                     href={service.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={onCloseMapPicker}
+                    onClick={() => {
+                      track("map_service_selected", { service: service.name });
+                      onCloseMapPicker();
+                    }}
                   >
                     {service.name}
                   </a>

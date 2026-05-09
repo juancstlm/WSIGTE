@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Map as MapKitMap, Marker, Polyline } from "mapkit-react";
 import type { Coordinate } from "mapkit-react";
 import { Header } from "./Header";
+import { track } from "../shared/utils";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL!;
 const SITE_URL = "https://wsigte.com";
@@ -177,12 +178,14 @@ export function ShareScreen({ place, token, userCoordinates, routePoints, onClos
   const handleCopy = () => {
     if (!shareUrl || !navigator.clipboard) return;
     navigator.clipboard.writeText(shareUrl).catch(() => {});
+    track("share_link_copied");
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
 
   const handleNativeShare = async () => {
     if (!shareUrl || !navigator.share) return;
+    track("share_native");
     try {
       await navigator.share({ title: `Eat at ${name}`, text: message, url: shareUrl });
     } catch {}
@@ -292,6 +295,7 @@ export function ShareScreen({ place, token, userCoordinates, routePoints, onClos
                   href={tile.href}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() => track("share_tile_clicked", { tile: tile.label })}
                 >
                   <div
                     className="share-tile-icon"

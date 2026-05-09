@@ -9,7 +9,7 @@ import type {
 } from "mapkit-react";
 
 import { STATUS } from "../types";
-import { createUniqueRandomGenerator, getPlaceKey } from "../shared/utils";
+import { createUniqueRandomGenerator, getPlaceKey, track } from "../shared/utils";
 import { REJECTIONS } from "../shared/constants";
 import { Header } from "./Header";
 import { LoadingScreen } from "./LoadingScreen";
@@ -177,6 +177,7 @@ const Map = ({ token }: MapProps) => {
     setRandomPlace(rando);
     setPickNumber((n) => n + 1);
     setScreen("result");
+    track("pick_shown");
   }, [status]);
 
   useEffect(() => {
@@ -273,9 +274,11 @@ const Map = ({ token }: MapProps) => {
     setStatus(STATUS.GETTING_YOUR_LOCATION);
     setRandomPlace(undefined);
     setRoutePoints([]);
+    track("manual_location_lookup");
     geocoder.current.lookup(query, (error, data) => {
       isManualLookup.current = false;
       if (error || !data?.results?.length) {
+        track("manual_location_lookup_failed");
         setStatus(STATUS.LOCATION_NOT_FOUND);
         return;
       }
@@ -323,6 +326,7 @@ const Map = ({ token }: MapProps) => {
       }
 
       if (!data.places.length) {
+        track("no_results_found");
         setStatus(STATUS.NO_RESULTS_FOUND);
         return;
       }
@@ -331,10 +335,12 @@ const Map = ({ token }: MapProps) => {
         (place) => !seenResults.current.has(getPlaceKey(place))
       );
       if (!filteredResults.length) {
+        track("no_results_found", { reason: "all_seen" });
         setStatus(STATUS.NO_RESULTS_FOUND);
         return;
       }
 
+      track("results_found", { count: filteredResults.length });
       setStatus(STATUS.RESULTS_FOUND);
       randomResultGenerator.current = createUniqueRandomGenerator(
         filteredResults,
@@ -344,6 +350,7 @@ const Map = ({ token }: MapProps) => {
   };
 
   const handleReject = () => {
+    track("pick_rejected", { pickNumber });
     setRejectionLine(
       REJECTIONS[Math.floor(Math.random() * REJECTIONS.length)]
     );
@@ -362,6 +369,7 @@ const Map = ({ token }: MapProps) => {
   };
 
   const handleWrongLocation = () => {
+    track("wrong_location_clicked");
     setStatus(STATUS.LOCATION_NOT_FOUND);
   };
 

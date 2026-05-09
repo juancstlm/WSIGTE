@@ -1,3 +1,5 @@
+export { track } from "./track";
+
 export function getPlaceKey(place: mapkit.Place) {
   return place.formattedAddress + place.name;
 }

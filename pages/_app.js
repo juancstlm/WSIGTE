@@ -67,6 +67,11 @@ function MyApp({ Component, pageProps }) {
           `,
             }}
           ></Script>
+          <Script
+            strategy="afterInteractive"
+            src="https://analytics.juancastillom.com/mielyboy"
+            data-website-id="e81e93c2-c05a-400f-bc86-9689f601275b"
+          />
         </>
       )}
       <Component {...pageProps} />

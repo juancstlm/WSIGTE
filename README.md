@@ -6,61 +6,74 @@ Live at **[wsigte.com](https://wsigte.com)**
 
 ## How It Works
 
-1. The app requests your location (browser geolocation).
-2. It searches nearby restaurants, cafes, and bakeries using MapKit's point-of-interest search.
-3. A random result is selected and displayed on the map with driving directions.
-4. Don't like the suggestion? Reject it with a snarky message and get another one.
-5. Found a place you want to share? Use the share screen to generate a shareable link.
+1. On load, `pages/index.tsx` fetches a short-lived MapKit JS JWT from `${NEXT_PUBLIC_API_BASE_URL}/v1/token` and caches it in `localStorage` until ~30s before expiry (decoded from the JWT payload).
+2. `mapkit-react` boots a hidden map to acquire the user's coordinates via browser geolocation, falling back to a manual address input if it fails or times out (10s).
+3. A `mapkit.Search` for `Bakery | Cafe | Restaurant` POIs runs against a 1°×1° region around the user.
+4. Results are filtered against a `seenResults` set, shuffled by `createUniqueRandomGenerator`, and yielded one at a time so each "That's awful" rejection produces a fresh pick without duplicates.
+5. `mapkit.Directions` draws a route polyline from the user to the selected pick; the map auto-fits both points.
+6. The share screen `POST`s the place to `${NEXT_PUBLIC_API_BASE_URL}/v1/places` and renders a short link at `/p/{shortId}`, which hydrates from `GET /v1/places/{shortId}`.
+
+The whole UI is driven by a `STATUS` state machine (`types/index.ts`) plus a separate `screen` enum (`loading | notfound | result | share`).
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Framework | Next.js 16 (static export) |
-| Language | TypeScript / React 19 |
-| Maps | Apple MapKit JS via `mapkit-react` |
-| Error Tracking | Bugsnag (production only) |
-| Styling | Vanilla CSS with Google Fonts (Rajdhani) |
+| Framework | Next.js 16 (Pages Router, static export) |
+| Language | TypeScript, React 19 |
+| Maps | Apple MapKit JS via [`mapkit-react`](https://github.com/Nicolapps/mapkit-react) |
+| Error Tracking | Bugsnag (production only, via `ErrorBoundary`) |
+| Analytics | Umami + Google Analytics (production only) |
+| Styling | Vanilla CSS, Google Fonts (Archivo, Inter, JetBrains Mono) |
 
 ## Project Structure
 
 ```
 pages/
-  index.tsx          # Entry point — fetches MapKit JWT token, renders Map
-  p/[id].tsx         # Shared place page — displays a place via short link
-  _app.js            # Global layout, SEO meta tags
-  _document.tsx      # HTML document shell
+  index.tsx          # TokenLoader: fetches/caches MapKit JWT, renders <Map />
+  p/[id].tsx         # Shared place page — hydrates from /v1/places/:id
+  _app.js            # Global SEO meta, GA + Umami script tags (prod only)
+  _document.tsx      # HTML shell, font preconnect/link tags
 components/
-  Map.tsx            # Core map logic: location, search, directions, UI
+  Map.tsx            # State machine, geolocation, POI search, directions, screen routing
   Header.tsx         # App header
   LoadingScreen.tsx  # Loading state with rotating witty messages
-  NotFoundScreen.tsx # Shown when no places are found nearby
-  ResultScreen.tsx   # Displays the selected place with actions
-  ShareScreen.tsx    # Share a place via a generated short link
-  Overlay.tsx        # Loading/status overlay shown during init and errors
-  ErrorBoundary.tsx  # React error boundary (Bugsnag in prod, console in dev)
+  NotFoundScreen.tsx # Manual address fallback when location/search fails
+  ResultScreen.tsx   # Pick details, route, "Take me there" map-app picker
+  ShareScreen.tsx    # POSTs place to API, builds short link + share tiles
+  Overlay.tsx        # Status overlay
+  ErrorBoundary.tsx  # Bugsnag in prod, console in dev
 shared/
   constants.ts       # Loading lines and rejection messages
-  hooks/             # useIsDev, useAdSense hooks
-  utils/             # Random place generator, place deduplication
-services/
-  api.ts             # API helpers
+  hooks/             # useIsDev (gates analytics + bugsnag in dev)
+  utils/
+    index.ts         # Place dedup key + unique-shuffle generator
+    track.ts         # Umami event helper (no-ops if script not loaded)
 types/
-  index.ts           # STATUS enum for app state machine
+  index.ts           # STATUS enum (state machine)
   mapkit.d.ts        # MapKit type declarations
-styles/
-  globals.css        # All styles
-public/
-  manifest.json      # PWA manifest
-  robots.txt         # Crawler rules
-  sitemap.xml        # Sitemap for wsigte.com
-server.js            # Optional local HTTPS dev server
+styles/globals.css   # All styles
+public/              # manifest.json, robots.txt, sitemap.xml, favicons
+server.js            # Optional local HTTPS dev server (geolocation needs HTTPS)
+next.config.js       # output: 'export' — fully static build
 ```
+
+Two files exist but are currently unused: `services/api.ts` (empty) and `shared/hooks/use-addsense.ts` (defined but never imported).
+
+## Backend Contract
+
+The frontend is fully static; all stateful behavior lives behind `NEXT_PUBLIC_API_BASE_URL`. The expected endpoints:
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/v1/token` | Returns a MapKit JS JWT as `text/plain`. Must include a standard `exp` claim — the client decodes the payload to know when to refetch. |
+| `POST` | `/v1/places` | Body: `{ appleMapsPlaceId, name, address, latitude, longitude }`. Returns `{ shortId }` for use in `/p/:shortId`. |
+| `GET` | `/v1/places/:shortId` | Returns the stored place; 404 renders the "link expired" screen. |
 
 ## Prerequisites
 
 - Node.js (v18+)
-- A backend API that serves a MapKit JS JWT token at a `/token` endpoint (the app fetches from `NEXT_PUBLIC_API_BASE_URL/token` at runtime)
+- A backend API that implements the [endpoints above](#backend-contract) — at minimum `GET /v1/token` for MapKit auth, plus `/v1/places` if you want share links to work
 
 ### MapKit JS Token
 
@@ -126,6 +139,27 @@ npm run build
 ```
 
 This generates a fully static site in the `out/` directory, ready to be deployed to any static hosting provider (Vercel, Netlify, GitHub Pages, S3, etc.).
+
+## Analytics
+
+Privacy-friendly analytics via [Umami](https://umami.is/), self-hosted at `analytics.juancastillom.com`. The tracker script is loaded in `pages/_app.js` via `next/script` and is gated behind `useIsDev`, so it only runs in production.
+
+Custom events are emitted through the helper at `shared/utils/track.ts`, which safely no-ops if Umami hasn't loaded.
+
+| Event | Where | Data |
+|-------|-------|------|
+| `results_found` | nearby search succeeded | `{ count }` |
+| `no_results_found` | search returned nothing (or all seen) | `{ reason? }` |
+| `pick_shown` | a random pick is rendered | — |
+| `pick_rejected` | "That's awful" clicked | `{ pickNumber }` |
+| `wrong_location_clicked` | "Wrong location" clicked | — |
+| `manual_location_lookup` | user submits an address | — |
+| `manual_location_lookup_failed` | geocoder couldn't resolve it | — |
+| `take_me_there_clicked` | opens the map app picker | — |
+| `map_service_selected` | Apple/Google/Waze chosen | `{ service }` |
+| `share_link_copied` | copy button on share screen | — |
+| `share_native` | native `navigator.share` invoked | — |
+| `share_tile_clicked` | Messages/WhatsApp/Email/X tile | `{ tile }` |
 
 ## Environment Variables
 
