@@ -49,3 +49,7 @@ out/*
 
 # Environment variables
 .env.local
+
+# Agent
+CLAUDE.md
+.claude
