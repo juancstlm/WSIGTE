@@ -9,7 +9,10 @@ import type {
 } from "mapkit-react";
 
 import { STATUS } from "../types";
-import { bumpSession, createUniqueRandomGenerator, getPlaceKey, track } from "../shared/utils";
+
+const MIN_LOADING_MS = 3000;
+import { useFeatureFlagsExposure, useSearchPlacesQuery } from "../shared/queries";
+import { bumpSession, createUniqueRandomGenerator, track } from "../shared/utils";
 import { REJECTIONS } from "../shared/constants";
 import { Header } from "./Header";
 import { LoadingScreen } from "./LoadingScreen";
@@ -60,6 +63,8 @@ function fitMapToPoints(
 }
 
 const Map = ({ token }: MapProps) => {
+  useFeatureFlagsExposure();
+
   const mapRef = useRef<mapkit.Map | null>(null);
   const [mapkitReady, setMapkitReady] = useState(false);
 
@@ -77,6 +82,7 @@ const Map = ({ token }: MapProps) => {
   const mapPickerRef = useRef<HTMLDivElement>(null);
 
   const [screen, setScreen] = useState<Screen>("loading");
+  const loadingStartedAt = useRef<number>(Date.now());
   const [pickNumber, setPickNumber] = useState(0);
   const pickNumberRef = useRef(0);
   const [rejecting, setRejecting] = useState(false);
@@ -165,20 +171,77 @@ const Map = ({ token }: MapProps) => {
     geocoder.current = new mapkit.Geocoder({ getsUserLocation: true });
   }, [mapkitReady]);
 
+  const placesQuery = useSearchPlacesQuery({
+    latitude: userCoordinates?.latitude,
+    longitude: userCoordinates?.longitude,
+    enabled:
+      mapkitReady &&
+      !!userCoordinates &&
+      (status === STATUS.LOCATION_FOUND ||
+        status === STATUS.LOOKING_FOR_RESULTS ||
+        status === STATUS.RESULTS_FOUND),
+  });
+
   useEffect(() => {
-    if (mapkitReady && userCoordinates && status === STATUS.LOCATION_FOUND) {
-      if (mapRef.current) {
-        mapRef.current.setCenterAnimated(
-          new mapkit.Coordinate(
-            userCoordinates.latitude,
-            userCoordinates.longitude
-          ),
-          true
-        );
-      }
-      searchForPlacesToEat();
+    if (!(mapkitReady && userCoordinates && status === STATUS.LOCATION_FOUND)) return;
+    if (mapRef.current) {
+      mapRef.current.setCenterAnimated(
+        new mapkit.Coordinate(
+          userCoordinates.latitude,
+          userCoordinates.longitude
+        ),
+        true
+      );
     }
+    bumpSession("searches");
+    setRandomPlace(undefined);
+    setRoutePoints([]);
+    setStatus(STATUS.LOOKING_FOR_RESULTS);
   }, [mapkitReady, userCoordinates, status]);
+
+  useEffect(() => {
+    if (status !== STATUS.LOOKING_FOR_RESULTS) return;
+    if (placesQuery.isPending || placesQuery.isFetching) return;
+
+    if (placesQuery.isError) {
+      console.warn("Search error:", placesQuery.error);
+      setStatus(STATUS.NO_RESULTS_FOUND);
+      return;
+    }
+
+    const places = placesQuery.data ?? [];
+    if (!places.length) {
+      track("no_results_found");
+      setStatus(STATUS.NO_RESULTS_FOUND);
+      return;
+    }
+
+    const generator = createUniqueRandomGenerator(places, seenResults.current);
+    const peek = generator.next();
+    if (peek.done) {
+      track("no_results_found", { reason: "all_seen" });
+      setStatus(STATUS.NO_RESULTS_FOUND);
+      return;
+    }
+
+    track("results_found", { count: places.length });
+    randomResultGenerator.current = (function* (): Generator<
+      mapkit.Place,
+      undefined,
+      mapkit.Place
+    > {
+      yield peek.value;
+      yield* generator;
+      return undefined;
+    })();
+    setStatus(STATUS.RESULTS_FOUND);
+  }, [
+    status,
+    placesQuery.isPending,
+    placesQuery.isFetching,
+    placesQuery.isError,
+    placesQuery.data,
+  ]);
 
   useEffect(() => {
     if (status !== STATUS.RESULTS_FOUND) return;
@@ -186,13 +249,25 @@ const Map = ({ token }: MapProps) => {
 
     const rando = randomResultGenerator.current.next().value;
     if (!rando) return;
-    const nextPick = pickNumberRef.current + 1;
-    pickNumberRef.current = nextPick;
-    setRandomPlace(rando);
-    setPickNumber(nextPick);
-    setScreen("result");
-    track("pick_shown", { pickNumber: nextPick });
-    bumpSession("picksShown");
+
+    const reveal = () => {
+      const nextPick = pickNumberRef.current + 1;
+      pickNumberRef.current = nextPick;
+      setRandomPlace(rando);
+      setPickNumber(nextPick);
+      setScreen("result");
+      track("pick_shown", { pickNumber: nextPick });
+      bumpSession("picksShown");
+    };
+
+    const elapsed = Date.now() - loadingStartedAt.current;
+    const remaining = MIN_LOADING_MS - elapsed;
+    if (remaining <= 0) {
+      reveal();
+      return;
+    }
+    const timeoutId = setTimeout(reveal, remaining);
+    return () => clearTimeout(timeoutId);
   }, [status]);
 
   useEffect(() => {
@@ -252,7 +327,11 @@ const Map = ({ token }: MapProps) => {
       status === STATUS.GETTING_YOUR_LOCATION ||
       status === STATUS.LOOKING_FOR_RESULTS
     ) {
-      setScreen((prev) => prev === "result" ? prev : "loading");
+      setScreen((prev) => {
+        if (prev === "result") return prev;
+        if (prev !== "loading") loadingStartedAt.current = Date.now();
+        return "loading";
+      });
     } else if (
       status === STATUS.LOCATION_NOT_FOUND ||
       status === STATUS.NO_RESULTS_FOUND
@@ -306,65 +385,6 @@ const Map = ({ token }: MapProps) => {
     });
   };
 
-  const searchForPlacesToEat = () => {
-    if (!mapkitReady || !userCoordinates) return;
-
-    bumpSession("searches");
-    setStatus(STATUS.LOOKING_FOR_RESULTS);
-    setRandomPlace(undefined);
-    setRoutePoints([]);
-
-    const coord = new mapkit.Coordinate(
-      userCoordinates.latitude,
-      userCoordinates.longitude
-    );
-    const span = new mapkit.CoordinateSpan(1, 1);
-    const searchRegion = new mapkit.CoordinateRegion(coord, span);
-
-    const filters = mapkit.PointOfInterestFilter.including([
-      mapkit.PointOfInterestCategory.Bakery,
-      mapkit.PointOfInterestCategory.Cafe,
-      mapkit.PointOfInterestCategory.Restaurant,
-    ]);
-
-    const pointOfInterestSearch = new mapkit.Search({
-      region: searchRegion,
-      getsUserLocation: true,
-      language: "en-US",
-      pointOfInterestFilter: filters,
-    });
-
-    pointOfInterestSearch.search("Food", (error, data) => {
-      if (error) {
-        console.warn("Search error:", error);
-        setStatus(STATUS.NO_RESULTS_FOUND);
-        return;
-      }
-
-      if (!data.places.length) {
-        track("no_results_found");
-        setStatus(STATUS.NO_RESULTS_FOUND);
-        return;
-      }
-
-      const filteredResults = data.places.filter(
-        (place) => !seenResults.current.has(getPlaceKey(place))
-      );
-      if (!filteredResults.length) {
-        track("no_results_found", { reason: "all_seen" });
-        setStatus(STATUS.NO_RESULTS_FOUND);
-        return;
-      }
-
-      track("results_found", { count: filteredResults.length });
-      setStatus(STATUS.RESULTS_FOUND);
-      randomResultGenerator.current = createUniqueRandomGenerator(
-        filteredResults,
-        seenResults.current
-      );
-    });
-  };
-
   const handleReject = () => {
     track("pick_rejected", { pickNumber });
     bumpSession("picksRejected");
@@ -386,7 +406,7 @@ const Map = ({ token }: MapProps) => {
         track("pick_shown", { pickNumber: nextPick });
         bumpSession("picksShown");
       }
-    }, 950);
+    }, 1700);
   };
 
   const handleWrongLocation = () => {
@@ -416,7 +436,14 @@ const Map = ({ token }: MapProps) => {
       {screen === "loading" && <LoadingScreen />}
 
       {screen === "notfound" && (
-        <NotFoundScreen onRetry={geocoderLookup} />
+        <NotFoundScreen
+          onRetry={geocoderLookup}
+          onRelocate={() => {
+            isManualLookup.current = false;
+            setStatus(STATUS.GETTING_YOUR_LOCATION);
+          }}
+          userCoordinates={userCoordinates}
+        />
       )}
 
       {screen === "result" && randomPlace && (

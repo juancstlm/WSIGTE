@@ -6,9 +6,9 @@ Live at **[wsigte.com](https://wsigte.com)**
 
 ## How It Works
 
-1. On load, `pages/index.tsx` fetches a short-lived MapKit JS JWT from `${NEXT_PUBLIC_API_BASE_URL}/v1/token` and caches it in `localStorage` until ~30s before expiry (decoded from the JWT payload).
-2. `mapkit-react` boots a hidden map to acquire the user's coordinates via browser geolocation, falling back to a manual address input if it fails or times out (10s).
-3. A `mapkit.Search` for `Bakery | Cafe | Restaurant` POIs runs against a 1°×1° region around the user.
+1. On load, `pages/index.tsx` pings `${NEXT_PUBLIC_API_BASE_URL}/v1/health` first. If it returns non-2xx or a `down` status, the `DownScreen` ("BACK SOON.") renders with a **Try again** button that retries the boot sequence. Otherwise it fetches a short-lived MapKit JS JWT from `${NEXT_PUBLIC_API_BASE_URL}/v1/token` and caches it in `localStorage` until ~30s before expiry (decoded from the JWT payload). A failed token request also drops the user onto the `DownScreen` with the HTTP status code stamped in the header.
+2. `mapkit-react` boots a hidden map to acquire the user's coordinates via browser geolocation. If it fails or times out (10s), the Not Found screen takes over: it offers a manual address input (powered by `mapkit.Search.autocomplete`, debounced 200ms, min 3 chars, biased to the last known region), a "Locate me" button that retries browser geolocation, and a grid of curated neighborhood tiles that submit a geocoder lookup on tap. The neighborhood list is currently a static stub (`DISTRICTS` in `components/NotFoundScreen.tsx`) — a real API will replace it later.
+3. A `mapkit.Search` for `Bakery | Cafe | Restaurant` POIs runs against a 1°×1° region around the user. Results are cached by React Query keyed on lat/lng rounded to 3 decimals (~100m) with a 10-minute `staleTime`, so re-searching the same area is instant.
 4. Results are filtered against a `seenResults` set, shuffled by `createUniqueRandomGenerator`, and yielded one at a time so each "That's awful" rejection produces a fresh pick without duplicates.
 5. `mapkit.Directions` draws a route polyline from the user to the selected pick; the map auto-fits both points.
 6. The share screen `POST`s the place to `${NEXT_PUBLIC_API_BASE_URL}/v1/places` and renders a short link at `/p/{shortId}`, which hydrates from `GET /v1/places/{shortId}`.
@@ -21,6 +21,7 @@ The whole UI is driven by a `STATUS` state machine (`types/index.ts`) plus a sep
 |-------|-----------|
 | Framework | Next.js 16 (Pages Router, static export) |
 | Language | TypeScript, React 19 |
+| Data Fetching | [`@tanstack/react-query`](https://tanstack.com/query) (all API calls — see `shared/api.ts` and `shared/queries.ts`) |
 | Maps | Apple MapKit JS via [`mapkit-react`](https://github.com/Nicolapps/mapkit-react) |
 | Error Tracking | Bugsnag (production only, via `ErrorBoundary`) |
 | Analytics | Umami + Google Analytics (production only) |
@@ -38,12 +39,18 @@ components/
   Map.tsx            # State machine, geolocation, POI search, directions, screen routing
   Header.tsx         # App header
   LoadingScreen.tsx  # Loading state with rotating witty messages
-  NotFoundScreen.tsx # Manual address fallback when location/search fails
+  NotFoundScreen.tsx # "We lost you" — manual address autocomplete, retry geolocation, curated neighborhood grid (stubbed)
+  DistrictGrid.tsx   # Renders a list of districts as <DistrictTile>s
+  DistrictTile.tsx   # Single neighborhood tile (number / city / name / sub) — exports the `District` type
+  DownScreen.tsx     # "BACK SOON." — rendered when /v1/health is down or /v1/token fails
   ResultScreen.tsx   # Pick details, route, "Take me there" map-app picker
   ShareScreen.tsx    # POSTs place to API, builds short link + share tiles
   Overlay.tsx        # Status overlay
   ErrorBoundary.tsx  # Bugsnag in prod, console in dev
 shared/
+  api.ts             # Typed fetchers for all API endpoints (health, token, feature flags, places)
+  queries.ts         # React Query hooks: useHealthQuery, useTokenQuery, useFeatureFlag(s)Query, useSearchPlacesQuery, useSharedPlaceQuery, useCreateSharedPlaceMutation
+  queryClient.ts     # makeQueryClient() — shared QueryClient defaults
   constants.ts       # Loading lines and rejection messages
   hooks/             # useIsDev (gates analytics + bugsnag in dev)
   utils/
@@ -66,9 +73,11 @@ The frontend is fully static; all stateful behavior lives behind `NEXT_PUBLIC_AP
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/v1/token` | Returns a MapKit JS JWT as `text/plain`. Must include a standard `exp` claim — the client decodes the payload to know when to refetch. |
+| `GET` | `/health` | Boot-time health check. `2xx` means up. Empty body or `{"status":"ok"}` is treated as healthy; `{"status":"down"}` (or the plain string `down`) or any non-2xx response renders the `DownScreen`. |
+| `GET` | `/v1/token` | Returns a MapKit JS JWT as `text/plain`. Must include a standard `exp` claim — the client decodes the payload to know when to refetch. A failed response also renders the `DownScreen`. |
 | `POST` | `/v1/places` | Body: `{ appleMapsPlaceId, name, address, latitude, longitude }`. Returns `{ shortId }` for use in `/p/:shortId`. |
 | `GET` | `/v1/places/:shortId` | Returns the stored place; 404 renders the "link expired" screen. |
+| `GET` | `/v1/feature-flags` | Returns `{ [flagName]: boolean }`. Fetched via React Query (`useFeatureFlagsQuery`) and exposed via `useFeatureFlag(name)`. Unknown flags default to `false`. Currently gates: `voting` (Make-it-a-vote CTA on the share screen). |
 
 ## Prerequisites
 
@@ -164,6 +173,13 @@ Custom events are emitted through the helper at `shared/utils/track.ts`, which s
 | `wrong_location_clicked` | "Wrong location" clicked | — |
 | `manual_location_lookup` | user submits an address | — |
 | `manual_location_lookup_failed` | geocoder couldn't resolve it | — |
+| `autocomplete_suggestion_selected` | user picks an autocomplete result on the Not Found screen | `{ kind }` (address / transit / area) |
+| `district_tile_clicked` | curated neighborhood tile tapped | `{ name, city }` |
+| `locate_me_clicked` | "Locate me" button on Not Found screen | — |
+| `notfound_input_cleared` | × button cleared the address input | — |
+| `notfound_selection_cleared` | "change" button cleared a staged selection | — |
+| `vote_cta_clicked` | "Start vote" CTA on the share screen (gated by `voting` flag) | — |
+| `feature_flags_loaded` | one-shot, once `/v1/feature-flags` resolves per session | the raw flags object (e.g. `{ voting: false, "curated-districts": true }`) |
 | `take_me_there_clicked` | opens the map app picker | — |
 | `map_service_selected` | Apple/Google/Waze chosen | `{ service }` |
 | `share_link_copied` | copy button on share screen | — |

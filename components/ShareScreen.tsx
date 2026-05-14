@@ -3,8 +3,8 @@ import { Map as MapKitMap, Marker, Polyline } from "mapkit-react";
 import type { Coordinate } from "mapkit-react";
 import { Header } from "./Header";
 import { track } from "../shared/utils";
+import { useCreateSharedPlaceMutation, useFeatureFlag } from "../shared/queries";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL!;
 const SITE_URL = "https://wsigte.com";
 
 interface ShareScreenProps {
@@ -122,6 +122,7 @@ function buildShareActions(shortId: string, message: string) {
 export function ShareScreen({ place, token, userCoordinates, routePoints, onClose }: ShareScreenProps) {
   const name = place.name;
   const address = place.formattedAddress;
+  const votingEnabled = useFeatureFlag("voting");
 
   const mapRegion = useMemo(() => {
     const points: Array<{ latitude: number; longitude: number }> = [
@@ -147,29 +148,28 @@ export function ShareScreen({ place, token, userCoordinates, routePoints, onClos
     };
   }, [place, userCoordinates, routePoints]);
 
-  const [shortId, setShortId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [message, setMessage] = useState(
     `The internet has decided we're eating at ${name}. Don't argue.`
   );
 
-  useEffect(() => {
-    const body = {
-      appleMapsPlaceId: getAppleMapsPlaceId(place),
-      name: place.name,
-      address: place.formattedAddress,
-      latitude: place.coordinate.latitude,
-      longitude: place.coordinate.longitude,
-    };
+  const createPlace = useCreateSharedPlaceMutation();
+  const shortId = createPlace.data?.shortId ?? null;
 
-    fetch(`${API_BASE_URL}/v1/places`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
-      .then((res) => res.json())
-      .then((data) => setShortId(data.shortId))
-      .catch((err) => console.error("Failed to create share link:", err));
+  useEffect(() => {
+    createPlace.mutate(
+      {
+        appleMapsPlaceId: getAppleMapsPlaceId(place),
+        name: place.name,
+        address: place.formattedAddress,
+        latitude: place.coordinate.latitude,
+        longitude: place.coordinate.longitude,
+      },
+      {
+        onError: (err) => console.error("Failed to create share link:", err),
+      }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [place]);
 
   const shareUrl = shortId ? buildShareUrl(shortId) : null;
@@ -334,15 +334,22 @@ export function ShareScreen({ place, token, userCoordinates, routePoints, onClos
             </button>
           </div>
 
-          <div className="share-vote-cta">
-            <div>
-              <div className="share-vote-title">Make it a vote</div>
-              <div className="share-vote-desc">
-                Send three picks. Friends rank. Loudest wins.
+          {votingEnabled && (
+            <div className="share-vote-cta">
+              <div>
+                <div className="share-vote-title">Make it a vote</div>
+                <div className="share-vote-desc">
+                  Send three picks. Friends rank. Loudest wins.
+                </div>
               </div>
+              <button
+                className="btn-vote"
+                onClick={() => track("vote_cta_clicked")}
+              >
+                Start vote →
+              </button>
             </div>
-            <button className="btn-vote">Start vote →</button>
-          </div>
+          )}
         </div>
       </div>
     </div>

@@ -98,6 +98,7 @@ export function ResultScreen({
                 latitude={place.coordinate.latitude}
                 longitude={place.coordinate.longitude}
                 color="#E04A2A"
+                glyphText="★"
                 title={place.name}
                 subtitle={place.formattedAddress}
               />

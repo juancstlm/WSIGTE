@@ -13,6 +13,16 @@ export const LOADING_LINES = [
   "Running out of patience faster than you…",
 ];
 
+export const DOWN_LINES = [
+  "Eat whatever you want. We won't know.",
+  "Indecision is currently outsourced to you.",
+  "The dice are in the shop.",
+  "Even we don't know where to eat right now.",
+  "Out chasing a rumor about a taco truck.",
+  "The decision engine is having one of its days.",
+  "Pick a place. We're flattered you waited.",
+];
+
 export const REJECTIONS = [
   "Noted. That place is dead to us.",
   "Coward. Trying again.",

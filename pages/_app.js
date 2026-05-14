@@ -1,9 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Script from "next/script";
 import Head from "next/head";
+import { QueryClientProvider } from "@tanstack/react-query";
 
 import { useIsDev } from "../shared/hooks";
 import { startSession } from "../shared/utils";
+import { makeQueryClient } from "../shared/queryClient";
 
 import "../styles/globals.css";
 
@@ -16,6 +18,7 @@ const SITE_DESCRIPTION =
 
 function MyApp({ Component, pageProps }) {
   const devMode = useIsDev();
+  const [queryClient] = useState(() => makeQueryClient());
   useEffect(() => {
     if (!devMode) startSession();
   }, [devMode]);
@@ -65,7 +68,9 @@ function MyApp({ Component, pageProps }) {
           )}
         </>
       )}
-      <Component {...pageProps} />
+      <QueryClientProvider client={queryClient}>
+        <Component {...pageProps} />
+      </QueryClientProvider>
     </>
   );
 }

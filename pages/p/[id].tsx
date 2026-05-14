@@ -1,45 +1,28 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { Header } from "../../components/Header";
 import { bumpSession, track } from "../../shared/utils";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL!;
-
-interface SharedPlace {
-  shortId: string;
-  appleMapsPlaceId: string;
-  name: string;
-  address: string;
-  latitude: number;
-  longitude: number;
-  createdAt: string;
-}
+import { useSharedPlaceQuery } from "../../shared/queries";
 
 export default function SharedPlacePage() {
   const router = useRouter();
   const { id } = router.query;
+  const idStr = typeof id === "string" ? id : undefined;
 
-  const [place, setPlace] = useState<SharedPlace | null>(null);
-  const [error, setError] = useState(false);
+  const query = useSharedPlaceQuery(idStr);
+  const place = query.data ?? null;
+  const error = query.isError;
 
   useEffect(() => {
-    if (!id || typeof id !== "string") return;
-    fetch(`${API_BASE_URL}/v1/places/${id}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Not found");
-        return res.json();
-      })
-      .then((data) => {
-        setPlace(data);
-        track("shared_place_viewed", { id });
-        bumpSession("sharedPlaceViewed");
-      })
-      .catch(() => {
-        setError(true);
-        track("shared_place_not_found", { id });
-      });
-  }, [id]);
+    if (!idStr) return;
+    if (query.isSuccess) {
+      track("shared_place_viewed", { id: idStr });
+      bumpSession("sharedPlaceViewed");
+    } else if (query.isError) {
+      track("shared_place_not_found", { id: idStr });
+    }
+  }, [idStr, query.isSuccess, query.isError]);
 
   const appleMapsUrl = place
     ? `https://maps.apple.com/?daddr=${place.latitude},${place.longitude}&dirflg=d`
