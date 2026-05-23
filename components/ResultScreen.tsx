@@ -11,7 +11,7 @@ import type {
   UserLocationChangeEvent,
   UserLocationErrorEvent,
 } from "mapkit-react";
-import type { RecommendationResult } from "../shared/api";
+import type { HoursSlot, RecommendationResult } from "../shared/api";
 import { SOFT_REJECT_LABELS } from "../shared/constants";
 
 export interface PlaceInfo {
@@ -20,16 +20,96 @@ export interface PlaceInfo {
   phone: string;
   website: string;
   urls: string[];
+  categoryDisplayName: string | null;
+  rating: number | null;
+  priceLevel: string | null;
+  openNow: boolean | null;
+  hours: HoursSlot[] | null;
+  yelpUrl: string | null;
+  photoUrl: string | null;
 }
 
-export function getPlaceInfo(place: mapkit.Place): PlaceInfo {
+export function getPlaceInfo(
+  place: mapkit.Place,
+  recommendation: RecommendationResult | null
+): PlaceInfo {
   return {
     name: place.name,
     address: place.formattedAddress,
-    phone: place.telephone || "N/A",
+    phone: place.telephone || recommendation?.phone || "N/A",
     website: place.urls?.[0] || "",
     urls: place.urls || [],
+    categoryDisplayName: recommendation?.categoryDisplayName ?? null,
+    rating: recommendation?.rating ?? null,
+    priceLevel: recommendation?.priceLevel ?? null,
+    openNow: recommendation?.openNow ?? null,
+    hours: recommendation?.hours ?? null,
+    yelpUrl: recommendation?.yelpUrl ?? null,
+    photoUrl: recommendation?.photoUrl ?? null,
   };
+}
+
+function formatDistanceMi(meters: number): string {
+  const mi = meters / 1609.344;
+  return mi < 0.1 ? `${(meters / 0.3048).toFixed(0)} FT` : `${mi.toFixed(1)} MI`;
+}
+
+function formatDriveMinutes(seconds: number): string {
+  const mins = Math.max(1, Math.round(seconds / 60));
+  return `${mins} MIN DRIVE`;
+}
+
+function formatHourMinute(hhmm: string): string {
+  // "1430" → "2:30pm", "2200" → "10pm". Returns "" on malformed input.
+  if (!/^\d{4}$/.test(hhmm)) return "";
+  const hour = Number(hhmm.slice(0, 2));
+  const min = hhmm.slice(2);
+  const ampm = hour >= 12 ? "pm" : "am";
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return min === "00" ? `${hour12}${ampm}` : `${hour12}:${min}${ampm}`;
+}
+
+// Pick the slot that applies right now (or the next-upcoming one today). Yelp `day`: Mon=0..Sun=6.
+function todaySlot(hours: HoursSlot[]): HoursSlot | null {
+  const now = new Date();
+  const yelpDow = (now.getDay() + 6) % 7;
+  const nowHhmm = `${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+  const todays = hours.filter((s) => s.day === yelpDow);
+  if (todays.length === 0) return null;
+  return (
+    todays.find((s) => s.start <= nowHhmm && (s.isOvernight || nowHhmm < s.end)) ??
+    todays.find((s) => s.start > nowHhmm) ??
+    todays[0]
+  );
+}
+
+// Server's `openNow` is a hint from Yelp at fetch time. If we have the schedule, prefer the
+// client-clock derivation — it stays correct as the day advances even on a stale cache.
+function formatHoursBlurb(hours: HoursSlot[] | null, openNowHint: boolean | null): string | null {
+  if (!hours || hours.length === 0) return openNowHint === false ? "Closed today" : null;
+  const slot = todaySlot(hours);
+  if (!slot) return "Closed today";
+  const now = new Date();
+  const yelpDow = (now.getDay() + 6) % 7;
+  const nowHhmm = `${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+  const openNow =
+    slot.day === yelpDow &&
+    slot.start <= nowHhmm &&
+    (slot.isOvernight || nowHhmm < slot.end);
+  return openNow
+    ? `Open · closes ${formatHourMinute(slot.end)}`
+    : `Closed · opens ${formatHourMinute(slot.start)}`;
+}
+
+function deriveOpenNow(hours: HoursSlot[] | null, openNowHint: boolean | null): boolean | null {
+  if (!hours || hours.length === 0) return openNowHint;
+  const slot = todaySlot(hours);
+  if (!slot) return false;
+  const now = new Date();
+  const yelpDow = (now.getDay() + 6) % 7;
+  if (slot.day !== yelpDow) return false;
+  const nowHhmm = `${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+  return slot.start <= nowHhmm && (slot.isOvernight || nowHhmm < slot.end);
 }
 
 const ACCENT = "#E04A2A";
@@ -54,6 +134,7 @@ export interface ResultScreenProps {
   token: string;
   userCoordinates: Coordinate | undefined;
   routePoints: Coordinate[][];
+  routeInfo: { distanceMeters: number; durationSeconds: number } | null;
   onMapLoad: () => void;
   onUserLocationChange: (event: UserLocationChangeEvent) => void;
   onUserLocationError: (event?: UserLocationErrorEvent) => void;
@@ -78,11 +159,14 @@ export function ResultScreen({
   token,
   userCoordinates,
   routePoints,
+  routeInfo,
   onMapLoad,
   onUserLocationChange,
   onUserLocationError,
 }: ResultScreenProps) {
-  const info = getPlaceInfo(place);
+  const info = getPlaceInfo(place, recommendation);
+  const openNow = deriveOpenNow(info.hours, info.openNow);
+  const hoursBlurb = formatHoursBlurb(info.hours, info.openNow);
   const isTopPick = recommendation?.source === "top_pick";
   const markerColor = isTopPick ? GOLD : ACCENT;
   // Stable per pick — the label rotates when the place changes, not on every render.
@@ -140,6 +224,11 @@ export function ResultScreen({
             >
               ★ {info.name}
             </span>
+            {routeInfo && (
+              <span className="chip chip--white">
+                {formatDriveMinutes(routeInfo.durationSeconds)}
+              </span>
+            )}
           </div>
           {rejecting && (
             <div className="rejection-overlay">
@@ -158,7 +247,23 @@ export function ResultScreen({
               Pick №{String(pickNumber).padStart(3, "0")}
             </span>
           )}
-          <div className="result-card-header-right" />
+          <div className="result-card-header-right">
+            {openNow === true && (
+              <span className="chip chip--green">● Open now</span>
+            )}
+            {openNow === false && (
+              <span className="chip chip--muted">● Closed</span>
+            )}
+            <button
+              className="btn-share"
+              onClick={() => {
+                track("share_clicked");
+                onShare();
+              }}
+            >
+              ↗ Share
+            </button>
+          </div>
         </div>
 
         <div className="result-headline">
@@ -173,7 +278,20 @@ export function ResultScreen({
         </div>
 
         <div className="result-tags">
-          <span className="chip chip--card">Restaurant</span>
+          <span className="chip chip--card">
+            {info.categoryDisplayName || "Restaurant"}
+          </span>
+          {info.priceLevel && (
+            <span className="chip chip--card">{info.priceLevel}</span>
+          )}
+          {info.rating != null && (
+            <span className="chip chip--card">★ {info.rating.toFixed(1)}</span>
+          )}
+          {routeInfo && (
+            <span className="chip chip--card">
+              {formatDistanceMi(routeInfo.distanceMeters)}
+            </span>
+          )}
         </div>
 
         <div className="result-details-grid">
@@ -197,6 +315,12 @@ export function ResultScreen({
               )}
             </div>
           </div>
+          {hoursBlurb && (
+            <div>
+              <div className="detail-label">Hours</div>
+              <div className="detail-value">{hoursBlurb}</div>
+            </div>
+          )}
         </div>
 
         {isTopPick && (

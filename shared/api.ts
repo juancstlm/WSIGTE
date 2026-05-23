@@ -96,7 +96,25 @@ export async function fetchFeatureFlags(): Promise<FeatureFlags> {
   return out;
 }
 
-export interface SharedPlace {
+export interface HoursSlot {
+  day: number; // Mon=0..Sun=6 (Yelp's convention)
+  start: string; // "HHMM" 24h, in the place's local time
+  end: string;
+  isOvernight: boolean;
+}
+
+export interface PlaceEnrichment {
+  categoryDisplayName: string | null;
+  rating: number | null;
+  priceLevel: string | null;
+  openNow: boolean | null;
+  hours: HoursSlot[] | null;
+  yelpUrl: string | null;
+  phone: string | null;
+  photoUrl: string | null;
+}
+
+export interface SharedPlace extends PlaceEnrichment {
   shortId: string;
   appleMapsPlaceId: string;
   name: string;
@@ -120,7 +138,7 @@ export interface CreatePlaceBody {
   longitude: number;
 }
 
-export interface RecommendationResult {
+export interface RecommendationResult extends PlaceEnrichment {
   appleMapsPlaceId: string;
   name: string;
   address: string;
@@ -168,7 +186,32 @@ export async function fetchRecommendation(
     longitude: r.longitude,
     blurb: typeof r.blurb === "string" ? r.blurb : undefined,
     source: r.source === "top_pick" ? "top_pick" : "mapkit",
+    ...readEnrichment(r),
   };
+}
+
+function readEnrichment(r: Partial<PlaceEnrichment>): PlaceEnrichment {
+  return {
+    categoryDisplayName: typeof r.categoryDisplayName === "string" ? r.categoryDisplayName : null,
+    rating: typeof r.rating === "number" ? r.rating : null,
+    priceLevel: typeof r.priceLevel === "string" ? r.priceLevel : null,
+    openNow: typeof r.openNow === "boolean" ? r.openNow : null,
+    hours: Array.isArray(r.hours) ? r.hours.filter(isHoursSlot) : null,
+    yelpUrl: typeof r.yelpUrl === "string" ? r.yelpUrl : null,
+    phone: typeof r.phone === "string" ? r.phone : null,
+    photoUrl: typeof r.photoUrl === "string" ? r.photoUrl : null,
+  };
+}
+
+function isHoursSlot(v: unknown): v is HoursSlot {
+  if (!v || typeof v !== "object") return false;
+  const s = v as Record<string, unknown>;
+  return (
+    typeof s.day === "number" &&
+    typeof s.start === "string" &&
+    typeof s.end === "string" &&
+    typeof s.isOvernight === "boolean"
+  );
 }
 
 export interface CreateSharedPlaceResult {

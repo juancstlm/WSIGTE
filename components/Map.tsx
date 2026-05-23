@@ -99,6 +99,10 @@ const Map = ({ token }: MapProps) => {
   const [nextHydratedPlace, setNextHydratedPlace] = useState<mapkit.Place | null>(null);
   const [status, setStatus] = useState(STATUS.INIT);
   const [routePoints, setRoutePoints] = useState<Coordinate[][]>([]);
+  const [routeInfo, setRouteInfo] = useState<{
+    distanceMeters: number;
+    durationSeconds: number;
+  } | null>(null);
   const geocoder = useRef<mapkit.Geocoder | null>(null);
   const isManualLookup = useRef(false);
   const [showMapPicker, setShowMapPicker] = useState(false);
@@ -221,6 +225,7 @@ const Map = ({ token }: MapProps) => {
     setRandomPlace(undefined);
     setActiveRecommendation(null);
     setRoutePoints([]);
+    setRouteInfo(null);
     setStatus(STATUS.LOOKING_FOR_RESULTS);
   }, [mapkitReady, userCoordinates, status]);
 
@@ -378,6 +383,7 @@ const Map = ({ token }: MapProps) => {
     if (!mapkitReady || !userCoordinates || !randomPlace) return;
 
     setRoutePoints([]);
+    setRouteInfo(null);
 
     const origin = new mapkit.Coordinate(
       userCoordinates.latitude,
@@ -394,6 +400,7 @@ const Map = ({ token }: MapProps) => {
       (error, data) => {
         if (error || !data.routes.length) return;
 
+        const primary = data.routes[0];
         const points = data.routes.map((route) =>
           route.polyline.points.map((p) => ({
             latitude: p.latitude,
@@ -401,6 +408,16 @@ const Map = ({ token }: MapProps) => {
           }))
         );
         setRoutePoints(points);
+
+        if (
+          typeof primary.distance === "number" &&
+          typeof primary.expectedTravelTime === "number"
+        ) {
+          setRouteInfo({
+            distanceMeters: primary.distance,
+            durationSeconds: primary.expectedTravelTime,
+          });
+        }
 
         if (mapRef.current) {
           const allPoints = data.routes.flatMap((r) =>
@@ -477,6 +494,7 @@ const Map = ({ token }: MapProps) => {
     setStatus(STATUS.GETTING_YOUR_LOCATION);
     setRandomPlace(undefined);
     setRoutePoints([]);
+    setRouteInfo(null);
     track("manual_location_lookup");
     geocoder.current.lookup(query, (error, data) => {
       isManualLookup.current = false;
@@ -579,6 +597,7 @@ const Map = ({ token }: MapProps) => {
           token={token}
           userCoordinates={userCoordinates}
           routePoints={routePoints}
+          routeInfo={routeInfo}
           onMapLoad={handleMapLoad}
           onUserLocationChange={handleUserLocationChange}
           onUserLocationError={handleUserLocationError}
