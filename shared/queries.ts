@@ -6,28 +6,46 @@ import { track } from "./utils";
 import {
   fetchFeatureFlags,
   fetchHealth,
+  fetchRecommendation,
   fetchSharedPlace,
   fetchToken,
   createSharedPlace,
-  searchPlacesToEat,
 } from "./api";
+import { getActiveExcludedIds } from "./utils/rejections";
+import { getSoftSkippedIds } from "./utils/softSkips";
 
 const PLACES_COORD_PRECISION = 3;
 const roundCoord = (n: number) =>
   Math.round(n * 10 ** PLACES_COORD_PRECISION) / 10 ** PLACES_COORD_PRECISION;
 
 const TOKEN_CACHE_KEY = "wsigte_mapkit_token";
-const TOKEN_EXPIRY_BUFFER_S = 30;
+const TOKEN_EXPIRY_BUFFER_MS = 30_000;
+
+interface CachedToken {
+  token: string;
+  expiresAt: string; // ISO 8601
+}
 
 function getCachedToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    const cached = localStorage.getItem(TOKEN_CACHE_KEY);
-    if (!cached) return null;
-    const payload = JSON.parse(atob(cached.split(".")[1]));
-    if (payload.exp - TOKEN_EXPIRY_BUFFER_S > Date.now() / 1000) return cached;
+    const raw = localStorage.getItem(TOKEN_CACHE_KEY);
+    if (!raw) return null;
+    const cached: CachedToken = JSON.parse(raw);
+    if (
+      cached &&
+      typeof cached.token === "string" &&
+      typeof cached.expiresAt === "string"
+    ) {
+      const expiry = Date.parse(cached.expiresAt);
+      if (Number.isFinite(expiry) && expiry - TOKEN_EXPIRY_BUFFER_MS > Date.now()) {
+        return cached.token;
+      }
+    }
   } catch {}
-  localStorage.removeItem(TOKEN_CACHE_KEY);
+  try {
+    localStorage.removeItem(TOKEN_CACHE_KEY);
+  } catch {}
   return null;
 }
 
@@ -47,11 +65,12 @@ export function useTokenQuery(enabled: boolean) {
     queryFn: async () => {
       const cached = getCachedToken();
       if (cached) return cached;
-      const jwt = await fetchToken();
+      const { token, expiresAt } = await fetchToken();
       try {
-        localStorage.setItem(TOKEN_CACHE_KEY, jwt);
+        const entry: CachedToken = { token, expiresAt };
+        localStorage.setItem(TOKEN_CACHE_KEY, JSON.stringify(entry));
       } catch {}
-      return jwt;
+      return token;
     },
     enabled,
     staleTime: Infinity,
@@ -69,9 +88,16 @@ export function useFeatureFlagsQuery() {
   });
 }
 
-export function useFeatureFlag(name: string): boolean {
+// Returns the raw string value of a flag, or undefined if the flag isn't set.
+// For variant/multi-value flags, branch on this return value directly.
+export function useFeatureFlagValue(name: string): string | undefined {
   const { data } = useFeatureFlagsQuery();
-  return data?.[name] === true;
+  return data?.[name];
+}
+
+// Boolean shortcut: true only when the flag's string value is exactly "true".
+export function useFeatureFlag(name: string): boolean {
+  return useFeatureFlagValue(name) === "true";
 }
 
 export function useFeatureFlagsExposure() {
@@ -94,25 +120,38 @@ export function useSharedPlaceQuery(id: string | undefined) {
   });
 }
 
-interface UseSearchPlacesParams {
+interface UseRecommendationParams {
   latitude: number | undefined;
   longitude: number | undefined;
   enabled: boolean;
+  // Refetch cursor — bumped by either a hard reject or a soft skip so React
+  // Query re-runs the call with a fresh excluded list. The list itself is
+  // read inside queryFn (persistent rejections from localStorage, session
+  // soft-skips from memory) so it never gets serialized into the cache key.
+  rejectionVersion: number;
 }
 
-export function useSearchPlacesQuery({
+export function useRecommendationQuery({
   latitude,
   longitude,
   enabled,
-}: UseSearchPlacesParams) {
+  rejectionVersion,
+}: UseRecommendationParams) {
   const lat = latitude !== undefined ? roundCoord(latitude) : undefined;
   const lng = longitude !== undefined ? roundCoord(longitude) : undefined;
   return useQuery({
-    queryKey: ["places-search", lat, lng],
-    queryFn: () => searchPlacesToEat({ latitude: lat!, longitude: lng! }),
+    queryKey: ["recommendation", lat, lng, rejectionVersion],
+    queryFn: () =>
+      fetchRecommendation({
+        latitude: lat!,
+        longitude: lng!,
+        excludedPlaceIds: Array.from(
+          new Set([...getActiveExcludedIds(), ...getSoftSkippedIds()])
+        ),
+      }),
     enabled: enabled && lat !== undefined && lng !== undefined,
-    staleTime: 10 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
+    staleTime: 0,
+    gcTime: 5 * 60 * 1000,
     retry: false,
     refetchOnWindowFocus: false,
   });

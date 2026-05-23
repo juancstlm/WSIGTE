@@ -8,10 +8,12 @@ Live at **[wsigte.com](https://wsigte.com)**
 
 1. On load, `pages/index.tsx` pings `${NEXT_PUBLIC_API_BASE_URL}/v1/health` first. If it returns non-2xx or a `down` status, the `DownScreen` ("BACK SOON.") renders with a **Try again** button that retries the boot sequence. Otherwise it fetches a short-lived MapKit JS JWT from `${NEXT_PUBLIC_API_BASE_URL}/v1/token` and caches it in `localStorage` until ~30s before expiry (decoded from the JWT payload). A failed token request also drops the user onto the `DownScreen` with the HTTP status code stamped in the header.
 2. `mapkit-react` boots a hidden map to acquire the user's coordinates via browser geolocation. If it fails or times out (10s), the Not Found screen takes over: it offers a manual address input (powered by `mapkit.Search.autocomplete`, debounced 200ms, min 3 chars, biased to the last known region), a "Locate me" button that retries browser geolocation, and a grid of curated neighborhood tiles that submit a geocoder lookup on tap. The neighborhood list is currently a static stub (`DISTRICTS` in `components/NotFoundScreen.tsx`) — a real API will replace it later.
-3. A `mapkit.Search` for `Bakery | Cafe | Restaurant` POIs runs against a 1°×1° region around the user. Results are cached by React Query keyed on lat/lng rounded to 3 decimals (~100m) with a 10-minute `staleTime`, so re-searching the same area is instant.
-4. Results are filtered against a `seenResults` set, shuffled by `createUniqueRandomGenerator`, and yielded one at a time so each "That's awful" rejection produces a fresh pick without duplicates.
-5. `mapkit.Directions` draws a route polyline from the user to the selected pick; the map auto-fits both points.
-6. The share screen `POST`s the place to `${NEXT_PUBLIC_API_BASE_URL}/v1/places` and renders a short link at `/p/{shortId}`, which hydrates from `GET /v1/places/{shortId}`.
+3. The client `POST`s to `${NEXT_PUBLIC_API_BASE_URL}/v1/recommendations` with `{ latitude, longitude, excludedPlaceIds }`. The server returns one recommendation drawn either from a curated `top_picks` table (probabilistic — configured server-side) or from Apple's Maps Server API for nearby `Bakery | Cafe | Restaurant` POIs. The recommendation carries `name`, `address`, `latitude`, `longitude`, `appleMapsPlaceId`, and optional `blurb`.
+4. The recommendation is hydrated client-side via `new mapkit.PlaceLookup().getPlace(appleMapsPlaceId, cb)` to populate `telephone` and `urls` (the Apple Maps Server API doesn't expose those — only the browser-side MapKit JS does). The loading screen stays up until hydration completes or a 4 s timeout falls back to the slim payload, so the result card always renders with contact info populated when available.
+5. Rejections persist in `localStorage` (`shared/utils/rejections.ts`) with a growing TTL — 1 d, 3 d, 7 d, 14 d, 30 d as a place is rejected more times. The active list is sent on every `/v1/recommendations` call as `excludedPlaceIds`. "That's awful" records a rejection, bumps a query-key version to force a refetch, and holds the rejection overlay for at least 1.7 s.
+6. `mapkit.Directions` draws a route polyline from the user to the selected pick; the map auto-fits both points.
+7. When the server flags `source: "top_pick"`, the result screen renders the **03b · Top Pick** dark takeover: a `result-layout--toppick` modifier flips the screen to dark mode, swaps marker/route to gold, shows a gold "★ Top Pick" badge above the headline, paints the place name gold, swaps the subtext to "You unlocked a top pick. Don't waste this." and adds a "Why this is a top pick" callout that surfaces `recommendation.blurb`.
+8. The share screen `POST`s the place to `${NEXT_PUBLIC_API_BASE_URL}/v1/places` and renders a short link at `/p/{shortId}`, which hydrates from `GET /v1/places/{shortId}`.
 
 The whole UI is driven by a `STATUS` state machine (`types/index.ts`) plus a separate `screen` enum (`loading | notfound | result | share`).
 
@@ -48,14 +50,16 @@ components/
   Overlay.tsx        # Status overlay
   ErrorBoundary.tsx  # Bugsnag in prod, console in dev
 shared/
-  api.ts             # Typed fetchers for all API endpoints (health, token, feature flags, places)
-  queries.ts         # React Query hooks: useHealthQuery, useTokenQuery, useFeatureFlag(s)Query, useSearchPlacesQuery, useSharedPlaceQuery, useCreateSharedPlaceMutation
+  api.ts             # Typed fetchers for all API endpoints (health, token, feature flags, places, recommendations)
+  queries.ts         # React Query hooks: useHealthQuery, useTokenQuery, useFeatureFlag(s)Query, useRecommendationQuery, useSharedPlaceQuery, useCreateSharedPlaceMutation
   queryClient.ts     # makeQueryClient() — shared QueryClient defaults
   constants.ts       # Loading lines and rejection messages
   hooks/             # useIsDev (gates analytics + bugsnag in dev)
   utils/
-    index.ts         # Place dedup key + unique-shuffle generator
+    index.ts         # Barrel: re-exports track + session helpers
     track.ts         # Umami event helper (no-ops if script not loaded)
+    session.ts       # Per-visit session counters surfaced via session_summary
+    rejections.ts    # localStorage-backed rejection store (growing TTL: 1d → 30d) sent as excludedPlaceIds
 types/
   index.ts           # STATUS enum (state machine)
   mapkit.d.ts        # MapKit type declarations
@@ -73,11 +77,12 @@ The frontend is fully static; all stateful behavior lives behind `NEXT_PUBLIC_AP
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/health` | Boot-time health check. `2xx` means up. Empty body or `{"status":"ok"}` is treated as healthy; `{"status":"down"}` (or the plain string `down`) or any non-2xx response renders the `DownScreen`. |
-| `GET` | `/v1/token` | Returns a MapKit JS JWT as `text/plain`. Must include a standard `exp` claim — the client decodes the payload to know when to refetch. A failed response also renders the `DownScreen`. |
-| `POST` | `/v1/places` | Body: `{ appleMapsPlaceId, name, address, latitude, longitude }`. Returns `{ shortId }` for use in `/p/:shortId`. |
+| `GET` | `/ready` | Boot-time readiness check (verifies the API can reach its DB). `2xx` means ready; anything else renders the `DownScreen`. |
+| `GET` | `/v1/token` | Returns `{ token, expiresAt, ttl }` as JSON. The client caches `token` in `localStorage` and refreshes ~30 s before `expiresAt`. A failed response renders the `DownScreen`. |
+| `POST` | `/v1/recommendations` | Body: `{ latitude, longitude, excludedPlaceIds }`. Returns `{ recommendation: { appleMapsPlaceId, name, address, latitude, longitude, blurb?, source }, searchRadiusMeters }` or `404` with `{ error: { code: "NOT_FOUND", … } }` when nothing in range. Drives the main "what should I eat" pick. |
+| `POST` | `/v1/places` | Body: `{ appleMapsPlaceId, name, address, latitude, longitude }`. Returns `{ shortId, created }` for use in `/p/:shortId`. |
 | `GET` | `/v1/places/:shortId` | Returns the stored place; 404 renders the "link expired" screen. |
-| `GET` | `/v1/feature-flags` | Returns `{ [flagName]: boolean }`. Fetched via React Query (`useFeatureFlagsQuery`) and exposed via `useFeatureFlag(name)`. Unknown flags default to `false`. Currently gates: `voting` (Make-it-a-vote CTA on the share screen). |
+| `GET` | `/v1/feature-flags` | Returns `{ [flagName]: string }` (values are arbitrary strings — use `"true"`/`"false"` for boolean-style flags). Fetched via React Query (`useFeatureFlagsQuery`) and exposed via `useFeatureFlag(name)` (true only when the value is exactly `"true"`) or `useFeatureFlagValue(name)` for variant flags. Unknown flags are `undefined`. |
 
 ## Prerequisites
 
@@ -166,8 +171,8 @@ Custom events are emitted through the helper at `shared/utils/track.ts`, which s
 | `shared_place_viewed` | `/p/[id]` resolved successfully | `{ id }` |
 | `shared_place_not_found` | `/p/[id]` 404 / fetch error | `{ id }` |
 | `shared_place_cta_clicked` | CTA on `/p/[id]` clicked | `{ cta, id?, from? }` |
-| `results_found` | nearby search succeeded | `{ count }` |
-| `no_results_found` | search returned nothing (or all seen) | `{ reason? }` |
+| `results_found` | `/v1/recommendations` returned a pick | `{ source }` (`top_pick` or `mapkit`) |
+| `no_results_found` | recommendation call returned 404 or errored | — |
 | `pick_shown` | a random pick is rendered (fires for every pick, including re-rolls) | `{ pickNumber }` |
 | `pick_rejected` | "That's awful" clicked | `{ pickNumber }` |
 | `wrong_location_clicked` | "Wrong location" clicked | — |

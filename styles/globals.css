@@ -792,7 +792,7 @@ a { color: var(--accent); text-decoration: underline; }
   border-radius: 14px;
 }
 
-.btn-wrong-location {
+.btn-next {
   padding: 14px;
   font-family: var(--display);
   font-weight: 700;
@@ -801,8 +801,30 @@ a { color: var(--accent); text-decoration: underline; }
   text-transform: uppercase;
   color: var(--ink);
   background: transparent;
-  border: 1.5px solid var(--ink);
+  border: 1px solid var(--hairline);
   border-radius: 14px;
+  cursor: pointer;
+}
+
+.btn-wrong-location-link {
+  display: block;
+  width: 100%;
+  margin: 10px 0 0;
+  padding: 8px 0;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  text-align: center;
+  cursor: pointer;
+}
+
+.btn-wrong-location-link:hover {
+  color: var(--ink);
 }
 
 /* Map picker dropdown */
@@ -1411,4 +1433,165 @@ a { color: var(--accent); text-decoration: underline; }
   letter-spacing: 0.06em;
   text-transform: uppercase;
   border-top: 1px solid var(--hairline);
+}
+
+/* ── Top Pick · dark takeover (03b) ─────────────────────── */
+.app-root--toppick {
+  --tp-bg: #15130F;
+  --tp-card: #1E1C18;
+  --tp-muted: #8A8477;
+  --tp-hairline: rgba(255, 255, 255, 0.08);
+  --tp-gold: #C4960C;
+  background: var(--tp-bg);
+}
+
+.app-root--toppick .header {
+  background: var(--tp-bg);
+}
+
+.app-root--toppick .header-title {
+  color: #fff;
+}
+
+.app-root--toppick .header .chip--muted {
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.result-layout--toppick {
+  background: var(--tp-bg, #15130F);
+  color: #fff;
+}
+
+.result-layout--toppick .result-map-inner {
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+}
+
+.result-layout--toppick .result-map-chips .chip {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.result-layout--toppick .result-card {
+  background: var(--tp-bg);
+}
+
+.result-layout--toppick .result-headline {
+  color: #fff;
+}
+
+.result-layout--toppick .result-headline span {
+  color: var(--tp-gold);
+}
+
+.result-layout--toppick .result-subtext {
+  color: var(--tp-muted);
+}
+
+.result-layout--toppick .result-tags .chip {
+  background: var(--tp-card);
+  color: #fff;
+  border: 1px solid var(--tp-hairline);
+}
+
+.result-layout--toppick .result-details-grid {
+  background: var(--tp-card);
+  border: 1px solid var(--tp-hairline);
+  box-shadow: none;
+}
+
+.result-layout--toppick .detail-label {
+  color: var(--tp-muted);
+}
+
+.result-layout--toppick .detail-value,
+.result-layout--toppick .detail-value a {
+  color: #fff;
+}
+
+.result-layout--toppick .btn-take-me {
+  background: var(--tp-gold);
+  color: var(--tp-bg);
+}
+
+.result-layout--toppick .btn-next {
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+}
+
+.app-root--toppick .btn-wrong-location-link {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.app-root--toppick .btn-wrong-location-link:hover {
+  color: #fff;
+}
+
+.result-layout--toppick .map-picker-dropdown {
+  background: var(--tp-card);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.result-layout--toppick .map-picker-option {
+  color: #fff;
+}
+
+.result-layout--toppick .map-picker-option:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.result-layout--toppick .map-picker-option + .map-picker-option {
+  border-top: 1px solid var(--tp-hairline);
+}
+
+/* gold gradient TOP PICK badge */
+.chip--toppick {
+  font-family: var(--display);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #C4960C, #D4A90E);
+  color: #15130F;
+  border: none;
+}
+
+/* "Why this is a top pick" callout */
+.toppick-why {
+  background: rgba(196, 150, 12, 0.12);
+  border: 1px solid rgba(196, 150, 12, 0.2);
+  border-radius: 14px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.toppick-why-star {
+  font-family: var(--display);
+  font-size: 18px;
+  line-height: 1;
+  color: #C4960C;
+}
+
+.toppick-why-title {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.toppick-why-body {
+  font-family: var(--body);
+  font-size: 12px;
+  color: #8A8477;
+  margin-top: 3px;
+  line-height: 1.4;
 }

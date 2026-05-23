@@ -6,6 +6,7 @@ type Counter =
   | "searches"
   | "picksShown"
   | "picksRejected"
+  | "picksSkipped"
   | "tookDirections"
   | "sharedPlaceViewed";
 
@@ -13,6 +14,7 @@ const counters: Record<Counter, number> = {
   searches: 0,
   picksShown: 0,
   picksRejected: 0,
+  picksSkipped: 0,
   tookDirections: 0,
   sharedPlaceViewed: 0,
 };

@@ -1,47 +1,99 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL!;
 
+export interface ApiErrorDetail {
+  field?: string;
+  message?: string;
+}
+
+export interface ApiErrorPayload {
+  code: string;
+  message: string;
+  details?: ApiErrorDetail[];
+}
+
 export class ApiError extends Error {
   status: number | string;
-  constructor(status: number | string, message?: string) {
+  code?: string;
+  details?: ApiErrorDetail[];
+  constructor(
+    status: number | string,
+    message?: string,
+    opts: { code?: string; details?: ApiErrorDetail[] } = {}
+  ) {
     super(message ?? `API error ${status}`);
     this.status = status;
+    this.code = opts.code;
+    this.details = opts.details;
   }
+}
+
+async function readApiError(
+  res: Response,
+  fallbackMessage: string
+): Promise<ApiError> {
+  try {
+    const data = await res.clone().json();
+    const err: ApiErrorPayload | undefined = data?.error;
+    if (err && typeof err === "object" && typeof err.code === "string") {
+      return new ApiError(res.status, err.message || fallbackMessage, {
+        code: err.code,
+        details: err.details,
+      });
+    }
+  } catch {
+    // not JSON, fall through
+  }
+  return new ApiError(res.status, fallbackMessage);
 }
 
 export type HealthResult = { ok: true } | { ok: false; status: number | string };
 
+// Hits /ready, which verifies DB connectivity. /health is now pure liveness.
 export async function fetchHealth(): Promise<HealthResult> {
   try {
-    const res = await fetch(`${API_BASE_URL}/health`, { cache: "no-store" });
+    const res = await fetch(`${API_BASE_URL}/ready`, { cache: "no-store" });
     if (!res.ok) return { ok: false, status: res.status };
-    const body = (await res.text()).trim().toLowerCase();
-    if (!body) return { ok: true };
-    try {
-      const parsed = JSON.parse(body);
-      const status = String(parsed?.status ?? "").toLowerCase();
-      if (status === "down") return { ok: false, status: 503 };
-    } catch {
-      if (body === "down") return { ok: false, status: 503 };
-    }
     return { ok: true };
   } catch {
     return { ok: false, status: 503 };
   }
 }
 
-export async function fetchToken(): Promise<string> {
-  const res = await fetch(`${API_BASE_URL}/v1/token`);
-  if (!res.ok) throw new ApiError(res.status, "token fetch failed");
-  return (await res.text()).trim();
+export interface TokenResponse {
+  token: string;
+  expiresAt: string;
+  ttl: number;
 }
 
-export type FeatureFlags = Record<string, boolean>;
+export async function fetchToken(): Promise<TokenResponse> {
+  const res = await fetch(`${API_BASE_URL}/v1/token`);
+  if (!res.ok) throw await readApiError(res, "token fetch failed");
+  const data = (await res.json()) as Partial<TokenResponse>;
+  if (
+    !data ||
+    typeof data.token !== "string" ||
+    typeof data.expiresAt !== "string" ||
+    typeof data.ttl !== "number"
+  ) {
+    throw new ApiError(res.status, "token response is malformed");
+  }
+  return data as TokenResponse;
+}
+
+// Values are arbitrary strings. Use "true"/"false" for boolean-style flags,
+// or any other value for variant flags (e.g. "v2", "blue").
+export type FeatureFlags = Record<string, string>;
 
 export async function fetchFeatureFlags(): Promise<FeatureFlags> {
-  const res = await fetch(`${API_BASE_URL}/v1/feature-flags`, { cache: "no-store" });
-  if (!res.ok) throw new ApiError(res.status, "feature-flags fetch failed");
+  const res = await fetch(`${API_BASE_URL}/v1/feature-flags`);
+  if (!res.ok) throw await readApiError(res, "feature-flags fetch failed");
   const data = await res.json();
-  return data && typeof data === "object" ? (data as FeatureFlags) : {};
+  if (!data || typeof data !== "object") return {};
+  const out: FeatureFlags = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (typeof v === "string") out[k] = v;
+  }
+  return out;
 }
 
 export interface SharedPlace {
@@ -56,7 +108,7 @@ export interface SharedPlace {
 
 export async function fetchSharedPlace(id: string): Promise<SharedPlace> {
   const res = await fetch(`${API_BASE_URL}/v1/places/${id}`);
-  if (!res.ok) throw new ApiError(res.status, "shared place not found");
+  if (!res.ok) throw await readApiError(res, "shared place not found");
   return (await res.json()) as SharedPlace;
 }
 
@@ -68,59 +120,74 @@ export interface CreatePlaceBody {
   longitude: number;
 }
 
-export interface PlacesSearchParams {
+export interface RecommendationResult {
+  appleMapsPlaceId: string;
+  name: string;
+  address: string;
   latitude: number;
   longitude: number;
-  spanDegrees?: number;
+  blurb?: string;
+  source: "top_pick" | "mapkit";
 }
 
-export function searchPlacesToEat({
-  latitude,
-  longitude,
-  spanDegrees = 1,
-}: PlacesSearchParams): Promise<mapkit.Place[]> {
-  return new Promise((resolve, reject) => {
-    if (typeof window === "undefined" || !window.mapkit?.Search) {
-      reject(new Error("MapKit is not loaded"));
-      return;
-    }
+export interface FetchRecommendationParams {
+  latitude: number;
+  longitude: number;
+  excludedPlaceIds: string[];
+}
 
-    const region = new mapkit.CoordinateRegion(
-      new mapkit.Coordinate(latitude, longitude),
-      new mapkit.CoordinateSpan(spanDegrees, spanDegrees)
-    );
-
-    const filters = mapkit.PointOfInterestFilter.including([
-      mapkit.PointOfInterestCategory.Bakery,
-      mapkit.PointOfInterestCategory.Cafe,
-      mapkit.PointOfInterestCategory.Restaurant,
-    ]);
-
-    const search = new mapkit.Search({
-      region,
-      getsUserLocation: true,
-      language: "en-US",
-      pointOfInterestFilter: filters,
-    });
-
-    search.search("Food", (error, data) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve(data.places ?? []);
-    });
+// Returns null when the server replies 404 ("no recommendations available" —
+// e.g. nothing within ~60 mi after excluding what the user already rejected).
+// Other errors throw ApiError.
+export async function fetchRecommendation(
+  params: FetchRecommendationParams
+): Promise<RecommendationResult | null> {
+  const res = await fetch(`${API_BASE_URL}/v1/recommendations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
   });
+  if (res.status === 404) return null;
+  if (!res.ok) throw await readApiError(res, "recommendation fetch failed");
+  const data = (await res.json()) as { recommendation?: Partial<RecommendationResult> };
+  const r = data?.recommendation;
+  if (
+    !r ||
+    typeof r.appleMapsPlaceId !== "string" ||
+    typeof r.name !== "string" ||
+    typeof r.latitude !== "number" ||
+    typeof r.longitude !== "number"
+  ) {
+    throw new ApiError(res.status, "recommendation response is malformed");
+  }
+  return {
+    appleMapsPlaceId: r.appleMapsPlaceId,
+    name: r.name,
+    address: typeof r.address === "string" ? r.address : "",
+    latitude: r.latitude,
+    longitude: r.longitude,
+    blurb: typeof r.blurb === "string" ? r.blurb : undefined,
+    source: r.source === "top_pick" ? "top_pick" : "mapkit",
+  };
+}
+
+export interface CreateSharedPlaceResult {
+  shortId: string;
+  created: boolean;
 }
 
 export async function createSharedPlace(
   body: CreatePlaceBody
-): Promise<{ shortId: string }> {
+): Promise<CreateSharedPlaceResult> {
   const res = await fetch(`${API_BASE_URL}/v1/places`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new ApiError(res.status, "place create failed");
-  return (await res.json()) as { shortId: string };
+  if (!res.ok) throw await readApiError(res, "place create failed");
+  const data = (await res.json()) as Partial<CreateSharedPlaceResult>;
+  return {
+    shortId: String(data?.shortId ?? ""),
+    created: data?.created === true,
+  };
 }

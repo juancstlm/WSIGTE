@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import {
+  ColorScheme,
   Map as MapKitMap,
   Marker,
   Polyline,
@@ -9,6 +11,8 @@ import type {
   UserLocationChangeEvent,
   UserLocationErrorEvent,
 } from "mapkit-react";
+import type { RecommendationResult } from "../shared/api";
+import { SOFT_REJECT_LABELS } from "../shared/constants";
 
 export interface PlaceInfo {
   name: string;
@@ -28,8 +32,12 @@ export function getPlaceInfo(place: mapkit.Place): PlaceInfo {
   };
 }
 
+const ACCENT = "#E04A2A";
+const GOLD = "#C4960C";
+
 export interface ResultScreenProps {
   place: mapkit.Place;
+  recommendation: RecommendationResult | null;
   pickNumber: number;
   rejecting: boolean;
   rejectionLine: string;
@@ -38,6 +46,7 @@ export interface ResultScreenProps {
   onToggleMapPicker: () => void;
   onCloseMapPicker: () => void;
   onReject: () => void;
+  onSkip: () => void;
   onWrongLocation: () => void;
   onShare: () => void;
   mapPickerRef: React.RefObject<HTMLDivElement | null>;
@@ -52,6 +61,7 @@ export interface ResultScreenProps {
 
 export function ResultScreen({
   place,
+  recommendation,
   pickNumber,
   rejecting,
   rejectionLine,
@@ -60,6 +70,7 @@ export function ResultScreen({
   onToggleMapPicker,
   onCloseMapPicker,
   onReject,
+  onSkip,
   onWrongLocation,
   onShare,
   mapPickerRef,
@@ -72,15 +83,24 @@ export function ResultScreen({
   onUserLocationError,
 }: ResultScreenProps) {
   const info = getPlaceInfo(place);
+  const isTopPick = recommendation?.source === "top_pick";
+  const markerColor = isTopPick ? GOLD : ACCENT;
+  // Stable per pick — the label rotates when the place changes, not on every render.
+  const softRejectLabel = useMemo(
+    () =>
+      SOFT_REJECT_LABELS[Math.floor(Math.random() * SOFT_REJECT_LABELS.length)],
+    [place.id]
+  );
 
   return (
-    <div className="result-layout">
+    <div className={`result-layout${isTopPick ? " result-layout--toppick" : ""}`}>
       <div className="result-map-area">
         <div className="result-map-inner">
           <MapKitMap
             ref={mapRef}
             token={token}
             showsUserLocation
+            colorScheme={isTopPick ? ColorScheme.Dark : ColorScheme.Light}
             onLoad={onMapLoad}
             onUserLocationChange={onUserLocationChange}
             onUserLocationError={onUserLocationError}
@@ -89,7 +109,7 @@ export function ResultScreen({
               <Marker
                 latitude={userCoordinates.latitude}
                 longitude={userCoordinates.longitude}
-                color="#E04A2A"
+                color={markerColor}
                 glyphText="📍"
               />
             )}
@@ -97,7 +117,7 @@ export function ResultScreen({
               <Marker
                 latitude={place.coordinate.latitude}
                 longitude={place.coordinate.longitude}
-                color="#E04A2A"
+                color={markerColor}
                 glyphText="★"
                 title={place.name}
                 subtitle={place.formattedAddress}
@@ -108,13 +128,16 @@ export function ResultScreen({
                 key={`route-${i}`}
                 points={points}
                 lineWidth={5}
-                strokeColor="#E04A2A"
+                strokeColor={markerColor}
               />
             ))}
           </MapKitMap>
           <div className="result-map-chips">
             <span className="chip chip--white">📍 You</span>
-            <span className="chip chip--white" style={{ color: "var(--accent)" }}>
+            <span
+              className="chip chip--white"
+              style={{ color: isTopPick ? GOLD : "var(--accent)" }}
+            >
               ★ {info.name}
             </span>
           </div>
@@ -128,15 +151,14 @@ export function ResultScreen({
 
       <div className="result-card">
         <div className="result-card-header">
-          <span className="chip chip--muted">
-            Pick №{String(pickNumber).padStart(3, "0")}
-          </span>
-          <div className="result-card-header-right">
-            {/* <span className="chip chip--green">● open now</span> */}
-            {/* <button className="btn-share" onClick={onShare}>
-              ↗ Share
-            </button> */}
-          </div>
+          {isTopPick ? (
+            <span className="chip chip--toppick">★ Top Pick</span>
+          ) : (
+            <span className="chip chip--muted">
+              Pick №{String(pickNumber).padStart(3, "0")}
+            </span>
+          )}
+          <div className="result-card-header-right" />
         </div>
 
         <div className="result-headline">
@@ -145,17 +167,13 @@ export function ResultScreen({
         </div>
 
         <div className="result-subtext">
-          That&apos;s our final answer. We won&apos;t be taking questions.
+          {isTopPick
+            ? "You unlocked a top pick. Don’t waste this."
+            : "That’s our final answer. We won’t be taking questions."}
         </div>
 
         <div className="result-tags">
           <span className="chip chip--card">Restaurant</span>
-          {/* <span className="chip chip--card">
-            <span className="stars">
-              {"★".repeat(Math.round(4.5))}
-              <span className="stars-dim">{"★".repeat(5 - Math.round(4.5))}</span>
-            </span>
-          </span> */}
         </div>
 
         <div className="result-details-grid">
@@ -179,11 +197,20 @@ export function ResultScreen({
               )}
             </div>
           </div>
-          {/* <div>
-            <div className="detail-label">Hours</div>
-            <div className="detail-value">Open now</div>
-          </div> */}
         </div>
+
+        {isTopPick && (
+          <div className="toppick-why">
+            <span className="toppick-why-star">★</span>
+            <div>
+              <div className="toppick-why-title">Why this is a top pick</div>
+              <div className="toppick-why-body">
+                {recommendation?.blurb ||
+                  "Hand-picked. We almost never say that."}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div style={{ flex: 1 }} />
 
@@ -219,13 +246,19 @@ export function ResultScreen({
               </div>
             )}
           </div>
+          <button className="btn-next" onClick={onSkip}>
+            {softRejectLabel}
+          </button>
           <button className="btn-awful" onClick={onReject}>
             That&apos;s awful
           </button>
-          <button className="btn-wrong-location" onClick={onWrongLocation}>
-            Wrong location
-          </button>
         </div>
+        <button
+          className="btn-wrong-location-link"
+          onClick={onWrongLocation}
+        >
+          Wrong location?
+        </button>
       </div>
     </div>
   );
