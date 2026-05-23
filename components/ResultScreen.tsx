@@ -13,6 +13,7 @@ import type {
 } from "mapkit-react";
 import type { HoursSlot, RecommendationResult } from "../shared/api";
 import { SOFT_REJECT_LABELS } from "../shared/constants";
+import { useFeatureFlag } from "../shared/queries";
 
 export interface PlaceInfo {
   name: string;
@@ -164,6 +165,7 @@ export function ResultScreen({
   onUserLocationChange,
   onUserLocationError,
 }: ResultScreenProps) {
+  const shareEnabled = useFeatureFlag('share-enabled')
   const info = getPlaceInfo(place, recommendation);
   const openNow = deriveOpenNow(info.hours, info.openNow);
   const hoursBlurb = formatHoursBlurb(info.hours, info.openNow);
@@ -254,7 +256,7 @@ export function ResultScreen({
             {openNow === false && (
               <span className="chip chip--muted">● Closed</span>
             )}
-            <button
+            {shareEnabled && <button
               className="btn-share"
               onClick={() => {
                 track("share_clicked");
@@ -262,7 +264,7 @@ export function ResultScreen({
               }}
             >
               ↗ Share
-            </button>
+            </button>}
           </div>
         </div>
 
