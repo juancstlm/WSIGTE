@@ -1,0 +1,294 @@
+/* ============================================================================
+   WSIGTE Design System — Tokens
+   ----------------------------------------------------------------------------
+   The single source of truth for typeface, spacing, radius, tracking and
+   weight. Loaded before globals.css (see pages/_app.js) so these :root vars
+   resolve everywhere.
+
+   Typography is modeled as one continuous ramp, biggest → smallest:
+
+     d1 d2 d3 d4 · h1xl h1 h2 h3 · p1 p2 p3 · caption overline micro
+
+   The four display tiers (d1–d4) are the oversized, fluid, uppercase Archivo
+   poster headlines; the heading tiers (h1xl–h3) and paragraph tiers (p1–p3)
+   are the structured UI scale; caption/overline/micro are the label steps
+   below p3 (chips, field labels, mono micro-text). Each tier is a *bundle* of
+   size / line-height / weight / tracking — apply them together via the
+   matching .text-* utility class, or reference the vars directly.
+   ============================================================================ */
+
+:root {
+  /* ── Typefaces ──────────────────────────────── */
+  --font-display: "Archivo", "Inter Tight", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Legacy aliases — kept so existing rules keep resolving. Prefer the
+     --font-* names above in new code. */
+  --display: var(--font-display);
+  --body: var(--font-body);
+  --mono: var(--font-mono);
+
+  /* ── Font weights ───────────────────────────────
+     Note: Inter is loaded 400–700, Archivo 500–900. Keep body text ≤ 700;
+     only display/Archivo tiers use 800/900. */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-extrabold: 800;
+  --weight-black: 900;
+
+  /* ── Letter-spacing (tracking) ──────────────── */
+  --tracking-tightest: -0.06em;
+  --tracking-tighter: -0.045em;
+  --tracking-tight: -0.025em;
+  --tracking-snug: -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-wider: 0.04em;
+  --tracking-widest: 0.08em;
+  --tracking-caps: 0.14em;
+
+  /* ── Type ramp ──────────────────────────────────
+     Display tiers: fluid (clamp), uppercase, Archivo, tight tracking.
+     Heading + paragraph tiers map the structured UI scale. */
+
+  /* d1 — hero (DownScreen "BACK SOON.") */
+  --t-d1-size: clamp(88px, 16vw, 240px);
+  --t-d1-line: 0.82;
+  --t-d1-weight: var(--weight-black);
+  --t-d1-tracking: var(--tracking-tightest);
+
+  /* d2 — loading headline */
+  --t-d2-size: clamp(64px, 9vw, 120px);
+  --t-d2-line: 0.88;
+  --t-d2-weight: var(--weight-extrabold);
+  --t-d2-tracking: var(--tracking-tighter);
+
+  /* d3 — primary screen headlines (notfound, result, share, swipe card) */
+  --t-d3-size: clamp(44px, 8vw, 80px);
+  --t-d3-line: 0.88;
+  --t-d3-weight: var(--weight-extrabold);
+  --t-d3-tracking: var(--tracking-tighter);
+
+  /* d4 — secondary headlines (peek, rejection, big tile names) */
+  --t-d4-size: clamp(28px, 5vw, 48px);
+  --t-d4-line: 0.92;
+  --t-d4-weight: var(--weight-extrabold);
+  --t-d4-tracking: -0.035em;
+
+  /* h1xl — 24 (share-card headline, district section title) */
+  --t-h1xl-size: 24px;
+  --t-h1xl-line: 1;
+  --t-h1xl-weight: var(--weight-extrabold);
+  --t-h1xl-tracking: var(--tracking-tight);
+
+  /* h1 — 20 (header title) */
+  --t-h1-size: 20px;
+  --t-h1-line: 1.05;
+  --t-h1-weight: var(--weight-extrabold);
+  --t-h1-tracking: var(--tracking-tight);
+
+  /* h2 — 17 (sub-headings, larger buttons) */
+  --t-h2-size: 17px;
+  --t-h2-line: 1.2;
+  --t-h2-weight: var(--weight-bold);
+  --t-h2-tracking: var(--tracking-snug);
+
+  /* h3 — 15 (mid buttons) */
+  --t-h3-size: 15px;
+  --t-h3-line: 1.3;
+  --t-h3-weight: var(--weight-bold);
+  --t-h3-tracking: var(--tracking-normal);
+
+  /* p1 — 14 (default body) */
+  --t-p1-size: 14px;
+  --t-p1-line: 1.45;
+  --t-p1-weight: var(--weight-regular);
+  --t-p1-tracking: var(--tracking-normal);
+
+  /* p2 — 13 (common body) */
+  --t-p2-size: 13px;
+  --t-p2-line: 1.4;
+  --t-p2-weight: var(--weight-regular);
+  --t-p2-tracking: var(--tracking-normal);
+
+  /* p3 — 12 (small body) */
+  --t-p3-size: 12px;
+  --t-p3-line: 1.4;
+  --t-p3-weight: var(--weight-regular);
+  --t-p3-tracking: var(--tracking-normal);
+
+  /* caption — 11 (chips, labels — the most common size) */
+  --t-caption-size: 11px;
+  --t-caption-line: 1.3;
+  --t-caption-weight: var(--weight-semibold);
+  --t-caption-tracking: var(--tracking-wider);
+
+  /* overline — 10 (field labels, tile meta — uppercase) */
+  --t-overline-size: 10px;
+  --t-overline-line: 1.3;
+  --t-overline-weight: var(--weight-semibold);
+  --t-overline-tracking: var(--tracking-caps);
+
+  /* micro — 9 (mono kind tags — uppercase) */
+  --t-micro-size: 9px;
+  --t-micro-line: 1.2;
+  --t-micro-weight: var(--weight-medium);
+  --t-micro-tracking: var(--tracking-widest);
+
+  /* ── Spacing (4px base, half-steps for fidelity) ── */
+  --space-0: 0;
+  --space-0_5: 2px;
+  --space-1: 4px;
+  --space-1_5: 6px;
+  --space-2: 8px;
+  --space-2_5: 10px;
+  --space-3: 12px;
+  --space-3_5: 14px;
+  --space-4: 16px;
+  --space-4_5: 18px;
+  --space-5: 20px;
+  --space-5_5: 22px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-9: 36px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ── Radius ─────────────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 10px;
+  --radius-chip: 12px;
+  --radius-md: 14px;
+  --radius-card: 16px;
+  --radius-lg: 18px;
+  --radius-xl: 22px;
+  --radius-2xl: 24px;
+  --radius-pill: 999px;
+  --radius-circle: 50%;
+}
+
+/* ── Type utility classes ──────────────────────────────────────────────────
+   Apply a whole tier bundle in one class. Display tiers force uppercase;
+   overline/micro are uppercase label tiers. */
+
+.text-d1,
+.text-d2,
+.text-d3,
+.text-d4,
+.text-h1xl,
+.text-h1 {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+}
+
+.text-d1 {
+  font-size: var(--t-d1-size);
+  line-height: var(--t-d1-line);
+  font-weight: var(--t-d1-weight);
+  letter-spacing: var(--t-d1-tracking);
+}
+
+.text-d2 {
+  font-size: var(--t-d2-size);
+  line-height: var(--t-d2-line);
+  font-weight: var(--t-d2-weight);
+  letter-spacing: var(--t-d2-tracking);
+}
+
+.text-d3 {
+  font-size: var(--t-d3-size);
+  line-height: var(--t-d3-line);
+  font-weight: var(--t-d3-weight);
+  letter-spacing: var(--t-d3-tracking);
+}
+
+.text-d4 {
+  font-size: var(--t-d4-size);
+  line-height: var(--t-d4-line);
+  font-weight: var(--t-d4-weight);
+  letter-spacing: var(--t-d4-tracking);
+}
+
+.text-h1xl {
+  font-size: var(--t-h1xl-size);
+  line-height: var(--t-h1xl-line);
+  font-weight: var(--t-h1xl-weight);
+  letter-spacing: var(--t-h1xl-tracking);
+}
+
+.text-h1 {
+  font-size: var(--t-h1-size);
+  line-height: var(--t-h1-line);
+  font-weight: var(--t-h1-weight);
+  letter-spacing: var(--t-h1-tracking);
+}
+
+.text-h2 {
+  font-family: var(--font-display);
+  font-size: var(--t-h2-size);
+  line-height: var(--t-h2-line);
+  font-weight: var(--t-h2-weight);
+  letter-spacing: var(--t-h2-tracking);
+}
+
+.text-h3 {
+  font-family: var(--font-display);
+  font-size: var(--t-h3-size);
+  line-height: var(--t-h3-line);
+  font-weight: var(--t-h3-weight);
+  letter-spacing: var(--t-h3-tracking);
+}
+
+.text-p1 {
+  font-family: var(--font-body);
+  font-size: var(--t-p1-size);
+  line-height: var(--t-p1-line);
+  font-weight: var(--t-p1-weight);
+  letter-spacing: var(--t-p1-tracking);
+}
+
+.text-p2 {
+  font-family: var(--font-body);
+  font-size: var(--t-p2-size);
+  line-height: var(--t-p2-line);
+  font-weight: var(--t-p2-weight);
+  letter-spacing: var(--t-p2-tracking);
+}
+
+.text-p3 {
+  font-family: var(--font-body);
+  font-size: var(--t-p3-size);
+  line-height: var(--t-p3-line);
+  font-weight: var(--t-p3-weight);
+  letter-spacing: var(--t-p3-tracking);
+}
+
+.text-caption {
+  font-family: var(--font-body);
+  font-size: var(--t-caption-size);
+  line-height: var(--t-caption-line);
+  font-weight: var(--t-caption-weight);
+  letter-spacing: var(--t-caption-tracking);
+}
+
+.text-overline {
+  font-family: var(--font-body);
+  font-size: var(--t-overline-size);
+  line-height: var(--t-overline-line);
+  font-weight: var(--t-overline-weight);
+  letter-spacing: var(--t-overline-tracking);
+  text-transform: uppercase;
+}
+
+.text-micro {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro-size);
+  line-height: var(--t-micro-line);
+  font-weight: var(--t-micro-weight);
+  letter-spacing: var(--t-micro-tracking);
+  text-transform: uppercase;
+}

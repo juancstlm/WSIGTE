@@ -7,6 +7,7 @@ import { useIsDev } from "../shared/hooks";
 import { startSession } from "../shared/utils";
 import { makeQueryClient } from "../shared/queryClient";
 
+import "../styles/tokens.css";
 import "../styles/globals.css";
 
 const UMAMI_WEBSITE_ID = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;

@@ -631,6 +631,40 @@ function ResultMedia({
   const [index, setIndex] = useState(0);
   const x = useMotionValue(0);
 
+  // The picked map is normally framed by the parent's fit-to-route effect, but
+  // that effect doesn't re-run when this map remounts (e.g. opening the location
+  // changer then returning to the pick). Without an initial region a fresh mount
+  // boots at MapKit's default 0,0 (null island, off Africa) — so seed it to
+  // frame the place (and the user, when known).
+  const initialRegion = useMemo(() => {
+    const pts = userCoordinates
+      ? [place.coordinate, userCoordinates]
+      : [place.coordinate];
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    let minLng = Infinity;
+    let maxLng = -Infinity;
+    for (const p of pts) {
+      minLat = Math.min(minLat, p.latitude);
+      maxLat = Math.max(maxLat, p.latitude);
+      minLng = Math.min(minLng, p.longitude);
+      maxLng = Math.max(maxLng, p.longitude);
+    }
+    const latPad = Math.max((maxLat - minLat) * 0.4, 0.01);
+    const lngPad = Math.max((maxLng - minLng) * 0.4, 0.01);
+    return {
+      centerLatitude: (minLat + maxLat) / 2,
+      centerLongitude: (minLng + maxLng) / 2,
+      latitudeDelta: maxLat - minLat + latPad * 2,
+      longitudeDelta: maxLng - minLng + lngPad * 2,
+    };
+  }, [
+    place.coordinate.latitude,
+    place.coordinate.longitude,
+    userCoordinates?.latitude,
+    userCoordinates?.longitude,
+  ]);
+
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
@@ -684,6 +718,7 @@ function ResultMedia({
               ref={mapRef}
               token={token}
               showsUserLocation
+              initialRegion={initialRegion}
               colorScheme={isTopPick ? ColorScheme.Dark : ColorScheme.Light}
               isScrollEnabled={slideCount === 1}
               isZoomEnabled={slideCount === 1}
@@ -720,20 +755,6 @@ function ResultMedia({
               ))}
             </MapKitMap>
           </div>
-          <div className="result-map-chips">
-            <span className="chip chip--white">📍 You</span>
-            <span
-              className="chip chip--white"
-              style={{ color: isTopPick ? GOLD : "var(--accent)" }}
-            >
-              ★ {name}
-            </span>
-            {routeInfo && (
-              <span className="chip chip--white">
-                {formatDriveMinutes(routeInfo.durationSeconds)}
-              </span>
-            )}
-          </div>
         </div>
 
         {validPhotos.map((src, i) => (
@@ -743,6 +764,9 @@ function ResultMedia({
               src={src}
               alt={`${name} photo ${i + 1}`}
               loading="lazy"
+              // Block the browser's native image ghost-drag, which otherwise
+              // hijacks the pointer and stops the carousel from swiping back.
+              draggable={false}
               onError={() =>
                 setFailedPhotos((prev) => new Set(prev).add(src))
               }
@@ -750,6 +774,22 @@ function ResultMedia({
           </div>
         ))}
       </motion.div>
+
+      {/* Pinned over the whole carousel so it stays put on every slide. */}
+      <div className="result-map-chips">
+        <span className="chip chip--white">📍 You</span>
+        <span
+          className="chip chip--white"
+          style={{ color: isTopPick ? GOLD : "var(--accent)" }}
+        >
+          ★ {name}
+        </span>
+        {routeInfo && (
+          <span className="chip chip--white">
+            {formatDriveMinutes(routeInfo.durationSeconds)}
+          </span>
+        )}
+      </div>
 
       {slideCount > 1 && (
         <div className="result-media-dots">

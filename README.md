@@ -30,7 +30,50 @@ The whole UI is driven by a `STATUS` state machine (`types/index.ts`) plus a sep
 | Animation | [`motion`](https://motion.dev/) (Framer Motion) — result-card swipe gestures |
 | Error Tracking | Bugsnag (production only, via `ErrorBoundary`) |
 | Analytics | Umami + Google Analytics (production only) |
-| Styling | Vanilla CSS, Google Fonts (Archivo, Inter, JetBrains Mono) |
+| Styling | Vanilla CSS + design tokens (`styles/tokens.css`), Google Fonts (Archivo, Inter, JetBrains Mono) |
+
+## Design System
+
+The visual language is tokenized in **`styles/tokens.css`** (a `:root` block + `.text-*`
+utility classes), imported before `styles/globals.css` in `pages/_app.js`. Every rule in
+`globals.css` consumes these tokens rather than hard-coded values — when adjusting type or
+spacing, change the token, not the call sites.
+
+**Typography** is one continuous ramp, biggest → smallest. Each tier is a bundle of
+size/line-height/weight/tracking (vars `--t-<tier>-size` etc.), also available as a
+`.text-<tier>` utility class:
+
+| Tier | Size | Role |
+|------|------|------|
+| `d1` | `clamp(88,16vw,240)` | Hero poster headline (DownScreen) |
+| `d2` | `clamp(64,9vw,120)` | Loading headline |
+| `d3` | `clamp(44,8vw,80)` | Primary screen headlines (NotFound / result / share) |
+| `d4` | `clamp(28,5vw,48)` | Secondary headlines (peek / rejection / tile name) |
+| `h1xl` | 24 | Card headline, section title |
+| `h1` | 20 | Header title |
+| `h2` | 17 | Sub-headings, large buttons |
+| `h3` | 15 | Mid buttons |
+| `p1` | 14 | Default body |
+| `p2` | 13 | Common body |
+| `p3` | 12 | Small body |
+| `caption` | 11 | Chips, labels |
+| `overline` | 10 | Field labels, tile meta (uppercase) |
+| `micro` | 9 | Mono kind tags (uppercase) |
+
+`d1`–`h1` are uppercase Archivo display type; `h2`/`h3` are Archivo; `p1`–`caption` are
+Inter; `micro` is JetBrains Mono. The fluid `clamp()` display tiers replace the old
+per-breakpoint headline size overrides. The typefaces themselves are `--font-display`
+(Archivo), `--font-body` (Inter), `--font-mono` (JetBrains Mono); the legacy
+`--display`/`--body`/`--mono` aliases still resolve.
+
+**Spacing** is a 4px base scale with half-steps for fidelity: `--space-1` (4px) through
+`--space-12` (48px), plus half-steps like `--space-1_5` (6px) and `--space-3_5` (14px).
+**Radius:** `--radius-xs/sm/chip/md/card/lg/xl/2xl` (4 → 24px) plus `--radius-pill` and
+`--radius-circle`. **Weights:** `--weight-regular`…`--weight-black` (note Inter only ships
+400–700, so body text stays ≤ 700). **Tracking:** `--tracking-tightest`…`--tracking-caps`.
+
+Colors are still raw vars in `globals.css` `:root` (`--bg`, `--ink`, `--accent`, …) and are
+not yet tokenized.
 
 ## Project Structure
 
@@ -70,7 +113,9 @@ shared/
 types/
   index.ts           # STATUS enum (state machine)
   mapkit.d.ts        # MapKit type declarations
-styles/globals.css   # All styles
+styles/
+  tokens.css         # Design tokens: type ramp (d1→micro), spacing, radius, tracking, weights + .text-* utilities
+  globals.css        # All component styles (consume tokens.css)
 public/              # manifest.json, robots.txt, sitemap.xml, favicons
 server.js            # Optional local HTTPS dev server (geolocation needs HTTPS)
 next.config.js       # output: 'export' — fully static build
