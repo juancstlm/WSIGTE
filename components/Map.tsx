@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import {
   Map as MapKitMap,
 } from "mapkit-react";
@@ -11,13 +12,12 @@ import type {
 import { STATUS } from "../types";
 
 const MIN_LOADING_MS = 3000;
-const REJECT_OVERLAY_MS = 1700;
-const SKIP_OVERLAY_MS = 900;
-import { useFeatureFlagsExposure, useRecommendationQuery } from "../shared/queries";
+import { useFeatureFlagsExposure } from "../shared/queries";
+import { useRecommendationQueue } from "../shared/hooks/useRecommendationQueue";
 import { bumpSession, track } from "../shared/utils";
-import { recordRejection, clearRejections } from "../shared/utils/rejections";
+import { clearRejections } from "../shared/utils/rejections";
 import { recordSoftSkip, clearSoftSkips } from "../shared/utils/softSkips";
-import { REJECTIONS, SOFT_SKIP_LINES, TOP_PICK_REJECTIONS } from "../shared/constants";
+import { SOFT_SKIP_LINES } from "../shared/constants";
 import type { RecommendationResult } from "../shared/api";
 import { Header } from "./Header";
 import { LoadingScreen } from "./LoadingScreen";
@@ -31,22 +31,6 @@ interface MapProps {
 }
 
 type Screen = "loading" | "notfound" | "noresults" | "result" | "share";
-
-// Adapts the server's slim payload into a mapkit.Place-shaped object so the
-// rest of the UI (ResultScreen, ShareScreen) keeps working unchanged. Only the
-// fields actually read downstream are populated; the synthetic object is not a
-// real MapKit-internal Place and should not be passed to MapKit APIs that
-// expect one (use raw coordinates for Directions instead).
-function toPlace(rec: RecommendationResult): mapkit.Place {
-  return {
-    id: rec.appleMapsPlaceId,
-    name: rec.name,
-    formattedAddress: rec.address,
-    coordinate: { latitude: rec.latitude, longitude: rec.longitude },
-    telephone: undefined,
-    urls: [],
-  } as unknown as mapkit.Place;
-}
 
 function fitMapToPoints(
   map: mapkit.Map,
@@ -91,13 +75,10 @@ const Map = ({ token }: MapProps) => {
   const [mapkitReady, setMapkitReady] = useState(false);
 
   const [userCoordinates, setUserCoordinates] = useState<Coordinate>();
-  const [rejectionVersion, setRejectionVersion] = useState(0);
-  const rejectMinUntilRef = useRef(0);
 
   const [randomPlace, setRandomPlace] = useState<mapkit.Place>();
   const [activeRecommendation, setActiveRecommendation] =
     useState<RecommendationResult | null>(null);
-  const [nextHydratedPlace, setNextHydratedPlace] = useState<mapkit.Place | null>(null);
   const [status, setStatus] = useState(STATUS.INIT);
   const [routePoints, setRoutePoints] = useState<Coordinate[][]>([]);
   const [routeInfo, setRouteInfo] = useState<{
@@ -110,6 +91,16 @@ const Map = ({ token }: MapProps) => {
   const mapPickerRef = useRef<HTMLDivElement>(null);
 
   const [screen, setScreen] = useState<Screen>("loading");
+  // false = browsing the swipe deck; true = the user accepted a pick and the
+  // map + full results have taken over.
+  const [picked, setPicked] = useState(false);
+  // The city the current picks are coming from (reverse-geocoded), shown in the
+  // header. null = not resolved yet ("Locating…").
+  const [cityLabel, setCityLabel] = useState<string | null>(null);
+  // true = the user deliberately opened the location changer from the header,
+  // so the NotFound search shows neutral "change location" copy (not "we lost
+  // you"). false = a genuine GPS failure routed there.
+  const [isChangingLocation, setIsChangingLocation] = useState(false);
   const loadingStartedAt = useRef<number>(Date.now());
   const [pickNumber, setPickNumber] = useState(0);
   const pickNumberRef = useRef(0);
@@ -141,6 +132,7 @@ const Map = ({ token }: MapProps) => {
 
   const handleUserLocationError = useCallback(
     (event?: UserLocationErrorEvent) => {
+      setIsChangingLocation(false);
       setStatus((prev) => {
         if (
           prev === STATUS.GETTING_YOUR_LOCATION ||
@@ -199,7 +191,42 @@ const Map = ({ token }: MapProps) => {
     geocoder.current = new mapkit.Geocoder({ getsUserLocation: true });
   }, [mapkitReady]);
 
-  const recommendationQuery = useRecommendationQuery({
+  // Reverse-geocode the current coordinates into a city name for the header
+  // indicator. Runs for both GPS and manual lookups since they both flow
+  // through `userCoordinates`. Ignores stale callbacks if coords changed.
+  useEffect(() => {
+    if (!mapkitReady || !geocoder.current || !userCoordinates) return;
+    const { latitude, longitude } = userCoordinates;
+    let cancelled = false;
+    geocoder.current.reverseLookup(
+      new mapkit.Coordinate(latitude, longitude),
+      (error, data) => {
+        if (cancelled || error || !data?.results?.length) return;
+        const place = data.results[0] as mapkit.Place & {
+          locality?: string;
+          administrativeAreaCode?: string;
+          administrativeArea?: string;
+          country?: string;
+        };
+        const city = place.locality;
+        const state = place.administrativeAreaCode || place.administrativeArea;
+        const label =
+          city && state
+            ? `${city}, ${state}`
+            : city ||
+              place.administrativeArea ||
+              place.country ||
+              place.formattedAddress?.split(",")[0] ||
+              null;
+        if (label) setCityLabel(label);
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [mapkitReady, userCoordinates]);
+
+  const queue = useRecommendationQueue({
     latitude: userCoordinates?.latitude,
     longitude: userCoordinates?.longitude,
     enabled:
@@ -208,8 +235,8 @@ const Map = ({ token }: MapProps) => {
       (status === STATUS.LOCATION_FOUND ||
         status === STATUS.LOOKING_FOR_RESULTS ||
         status === STATUS.RESULTS_FOUND),
-    rejectionVersion,
   });
+  const { head, peek } = queue;
 
   useEffect(() => {
     if (!(mapkitReady && userCoordinates && status === STATUS.LOCATION_FOUND)) return;
@@ -223,165 +250,72 @@ const Map = ({ token }: MapProps) => {
       );
     }
     bumpSession("searches");
+    // New location — drop any buffered picks for the old coordinates and re-fill.
+    queue.reset();
+    setIsChangingLocation(false);
     setRandomPlace(undefined);
     setActiveRecommendation(null);
+    setPicked(false);
     setRoutePoints([]);
     setRouteInfo(null);
     setStatus(STATUS.LOOKING_FOR_RESULTS);
   }, [mapkitReady, userCoordinates, status]);
 
+  // Reveal / promote the displayed pick from the queue head. The buffer keeps
+  // the next pick pre-fetched + pre-hydrated, so a skip/reject (which `consume`s
+  // the head) promotes the next card instantly. Only the *first* reveal honors
+  // MIN_LOADING_MS so the loading screen doesn't flash by.
   useEffect(() => {
-    if (status !== STATUS.LOOKING_FOR_RESULTS) return;
-    if (recommendationQuery.isPending || recommendationQuery.isFetching) return;
+    if (status !== STATUS.LOOKING_FOR_RESULTS && status !== STATUS.RESULTS_FOUND) return;
+    if (!head) return;
+    if (randomPlace && randomPlace.id === head.place.id) return;
 
-    if (recommendationQuery.isError) {
-      console.warn("Recommendation error:", recommendationQuery.error);
-      setStatus(STATUS.NO_RESULTS_FOUND);
-      return;
-    }
-
-    if (!recommendationQuery.data) {
-      track("no_results_found");
-      setStatus(STATUS.NO_RESULTS_FOUND);
-      return;
-    }
-
-    track("results_found", { source: recommendationQuery.data.source });
-    setStatus(STATUS.RESULTS_FOUND);
-  }, [
-    status,
-    recommendationQuery.isPending,
-    recommendationQuery.isFetching,
-    recommendationQuery.isError,
-    recommendationQuery.data,
-  ]);
-
-  // Hydrate the next recommendation (phone, urls) via MapKit's PlaceLookup
-  // *before* we reveal it. The server's payload only carries name/address/coords
-  // because the Apple Maps Server API doesn't expose contact info. The result
-  // lives in `nextHydratedPlace`; the reveal effects below wait for it.
-  useEffect(() => {
-    if (!mapkitReady) return;
-    const rec = recommendationQuery.data;
-    if (!rec) {
-      if (nextHydratedPlace !== null) setNextHydratedPlace(null);
-      return;
-    }
-    if (nextHydratedPlace?.id === rec.appleMapsPlaceId) return;
-
-    let cancelled = false;
-    const fallback = toPlace(rec);
-    const finish = (place: mapkit.Place) => {
-      if (cancelled) return;
-      setNextHydratedPlace(place);
-    };
-    // Bail out and use the slim payload if PlaceLookup hangs.
-    const timeoutId = setTimeout(() => finish(fallback), 4000);
-
-    const PlaceLookupCtor = (mapkit as unknown as {
-      PlaceLookup?: new () => {
-        getPlace: (id: string, cb: (e: Error | null, p: mapkit.Place | null) => void) => void;
-      };
-    }).PlaceLookup;
-    if (!PlaceLookupCtor) {
-      clearTimeout(timeoutId);
-      finish(fallback);
-      return;
-    }
-    const lookup = new PlaceLookupCtor();
-    lookup.getPlace(rec.appleMapsPlaceId, (error, hydrated) => {
-      clearTimeout(timeoutId);
-      if (error || !hydrated) {
-        if (error) console.warn("Place lookup failed, using slim payload:", error);
-        finish(fallback);
-        return;
-      }
-      finish(hydrated);
-    });
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timeoutId);
-    };
-  }, [mapkitReady, recommendationQuery.data, nextHydratedPlace]);
-
-  // Initial reveal — first result for this location. Honors MIN_LOADING_MS so
-  // the loading screen doesn't flash by, AND waits for hydration so phone/website
-  // are populated when the card appears.
-  useEffect(() => {
-    if (status !== STATUS.RESULTS_FOUND) return;
-    if (randomPlace) return;
-    if (!nextHydratedPlace) return;
-
-    const place = nextHydratedPlace;
-    const rec = recommendationQuery.data ?? null;
     const reveal = () => {
       const nextPick = pickNumberRef.current + 1;
       pickNumberRef.current = nextPick;
-      setRandomPlace(place);
-      setActiveRecommendation(rec);
+      setRandomPlace(head.place);
+      setActiveRecommendation(head.recommendation);
       setPickNumber(nextPick);
+      setRejecting(false);
       setScreen("result");
-      track("pick_shown", { pickNumber: nextPick, source: rec?.source });
+      setStatus(STATUS.RESULTS_FOUND);
+      track("pick_shown", {
+        pickNumber: nextPick,
+        source: head.recommendation.source,
+      });
       bumpSession("picksShown");
     };
 
-    const elapsed = Date.now() - loadingStartedAt.current;
-    const remaining = MIN_LOADING_MS - elapsed;
+    if (randomPlace) {
+      // Promoting the next card after a swipe/skip — already hydrated, instant.
+      reveal();
+      return;
+    }
+    // First card for this location — respect the minimum loading time.
+    const remaining = MIN_LOADING_MS - (Date.now() - loadingStartedAt.current);
     if (remaining <= 0) {
       reveal();
       return;
     }
     const timeoutId = setTimeout(reveal, remaining);
     return () => clearTimeout(timeoutId);
-  }, [status, nextHydratedPlace, randomPlace]);
+  }, [status, head, randomPlace]);
 
-  // Reject reveal — waits for both the refetch AND the hydration of the new
-  // place, holds the overlay at least REJECT_OVERLAY_MS, then swaps.
+  // Out of picks — the buffer drained and the server has nothing left nearby.
   useEffect(() => {
-    if (!rejecting) return;
-    if (recommendationQuery.isFetching) return;
+    if (status !== STATUS.LOOKING_FOR_RESULTS && status !== STATUS.RESULTS_FOUND) return;
+    if (head) return;
+    if (queue.filling) return;
+    if (!queue.exhausted) return;
+    track("no_results_found");
+    setRejecting(false);
+    setStatus(STATUS.NO_RESULTS_FOUND);
+  }, [status, head, queue.filling, queue.exhausted]);
 
-    const errored = recommendationQuery.isError;
-    const noResult = !recommendationQuery.isError && !recommendationQuery.data;
-    const hydratedForCurrent =
-      !!recommendationQuery.data &&
-      nextHydratedPlace?.id === recommendationQuery.data.appleMapsPlaceId;
-
-    if (!errored && !noResult && !hydratedForCurrent) return;
-
-    const remaining = Math.max(0, rejectMinUntilRef.current - Date.now());
-    const finish = () => {
-      setRejecting(false);
-      if (errored || noResult || !hydratedForCurrent) {
-        setStatus(STATUS.NO_RESULTS_FOUND);
-        return;
-      }
-      const nextPick = pickNumberRef.current + 1;
-      pickNumberRef.current = nextPick;
-      const rec = recommendationQuery.data ?? null;
-      setRandomPlace(nextHydratedPlace);
-      setActiveRecommendation(rec);
-      setPickNumber(nextPick);
-      track("pick_shown", { pickNumber: nextPick, source: rec?.source });
-      bumpSession("picksShown");
-    };
-    if (remaining === 0) {
-      finish();
-      return;
-    }
-    const timeoutId = setTimeout(finish, remaining);
-    return () => clearTimeout(timeoutId);
-  }, [
-    rejecting,
-    recommendationQuery.isFetching,
-    recommendationQuery.data,
-    recommendationQuery.isError,
-    nextHydratedPlace,
-  ]);
-
+  // The route + map only exist once the user has picked, so don't spend a
+  // Directions call per swiped card — compute it when a pick is locked in.
   useEffect(() => {
-    if (!mapkitReady || !userCoordinates || !randomPlace) return;
+    if (!picked || !mapkitReady || !userCoordinates || !randomPlace) return;
 
     setRoutePoints([]);
     setRouteInfo(null);
@@ -432,7 +366,7 @@ const Map = ({ token }: MapProps) => {
         }
       }
     );
-  }, [randomPlace]);
+  }, [picked, randomPlace]);
 
   useEffect(() => {
     if (!showMapPicker) return;
@@ -491,8 +425,10 @@ const Map = ({ token }: MapProps) => {
   const geocoderLookup = (query: string) => {
     if (!geocoder.current) return;
     isManualLookup.current = true;
+    setIsChangingLocation(false);
     setStatus(STATUS.GETTING_YOUR_LOCATION);
     setRandomPlace(undefined);
+    setPicked(false);
     setRoutePoints([]);
     setRouteInfo(null);
     track("manual_location_lookup");
@@ -512,17 +448,15 @@ const Map = ({ token }: MapProps) => {
     });
   };
 
-  const handleReject = () => {
-    if (!randomPlace) return;
-    const wasTopPick = activeRecommendation?.source === "top_pick";
-    track("pick_rejected", { pickNumber, source: activeRecommendation?.source });
-    bumpSession("picksRejected");
-    recordRejection(randomPlace.id);
-    const lines = wasTopPick ? TOP_PICK_REJECTIONS : REJECTIONS;
-    setRejectionLine(lines[Math.floor(Math.random() * lines.length)]);
-    rejectMinUntilRef.current = Date.now() + REJECT_OVERLAY_MS;
-    setRejecting(true);
-    setRejectionVersion((v) => v + 1);
+  // Drop the current pick and promote the next. The next card is already
+  // buffered + hydrated, so it appears instantly; we only flash the
+  // "finding next" face when the buffer has drained (no `peek` ready).
+  const advance = (line: string) => {
+    if (!queue.peek) {
+      setRejectionLine(line);
+      setRejecting(true);
+    }
+    queue.consume();
   };
 
   const handleSoftSkip = () => {
@@ -530,17 +464,43 @@ const Map = ({ token }: MapProps) => {
     track("pick_skipped", { pickNumber, source: activeRecommendation?.source });
     bumpSession("picksSkipped");
     recordSoftSkip(randomPlace.id);
-    setRejectionLine(
-      SOFT_SKIP_LINES[Math.floor(Math.random() * SOFT_SKIP_LINES.length)]
-    );
-    rejectMinUntilRef.current = Date.now() + SKIP_OVERLAY_MS;
-    setRejecting(true);
-    setRejectionVersion((v) => v + 1);
+    advance(SOFT_SKIP_LINES[Math.floor(Math.random() * SOFT_SKIP_LINES.length)]);
   };
 
-  const handleWrongLocation = () => {
-    track("wrong_location_clicked");
+  // Accept the current card — lock it in and reveal the map + full results.
+  const handlePick = () => {
+    if (!randomPlace) return;
+    track("pick_accepted", { pickNumber, source: activeRecommendation?.source });
+    bumpSession("picksAccepted");
+    setShowMapPicker(false);
+    setPicked(true);
+  };
+
+  // "Pick again" from the results — go back to swiping the same buffer.
+  const handleBack = () => {
+    track("pick_again_clicked");
+    setShowMapPicker(false);
+    setRoutePoints([]);
+    setRouteInfo(null);
+    setPicked(false);
+  };
+
+  // Open the location changer (full-screen search) from the header indicator.
+  const handleChangeLocation = () => {
+    track("change_location_clicked");
+    setIsChangingLocation(true);
     setStatus(STATUS.LOCATION_NOT_FOUND);
+  };
+
+  // "← Back to picks" from the changer — return to the current pick (still
+  // buffered) without re-rolling. Only offered when a pick exists.
+  const handleCancelChange = () => {
+    track("change_location_cancelled");
+    setIsChangingLocation(false);
+    setStatus(STATUS.RESULTS_FOUND);
+    // The reveal effect won't re-fire (head is already the shown pick), so route
+    // back to the result screen explicitly.
+    setScreen("result");
   };
 
   // "Start over" from the out-of-results screen: the dry spell is usually the
@@ -551,12 +511,13 @@ const Map = ({ token }: MapProps) => {
     track("noresults_reset");
     clearRejections();
     clearSoftSkips();
+    queue.reset();
     setRandomPlace(undefined);
     setActiveRecommendation(null);
-    setNextHydratedPlace(null);
+    setPicked(false);
+    setRejecting(false);
     setRoutePoints([]);
     setRouteInfo(null);
-    setRejectionVersion((v) => v + 1);
     setStatus(STATUS.LOOKING_FOR_RESULTS);
   };
 
@@ -567,7 +528,9 @@ const Map = ({ token }: MapProps) => {
 
   return (
     <div className={`app-root${isTopPickResult ? " app-root--toppick" : ""}`}>
-      {screen !== "share" && <Header />}
+      {screen !== "share" && (
+        <Header cityLabel={cityLabel} onChangeLocation={handleChangeLocation} />
+      )}
 
       {needsHiddenMap && (
         <div style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0 }}>
@@ -582,52 +545,112 @@ const Map = ({ token }: MapProps) => {
         </div>
       )}
 
-      {screen === "loading" && <LoadingScreen />}
+      {screen !== "share" && (
+        <div className="screen-stage">
+          {/* The loading screen, the first pick, and the fallback screens
+              crossfade through one stage so the hand-off from "HOLD STILL." to
+              the first card defocuses out and rises in instead of hard-cutting. */}
+          <AnimatePresence initial={false}>
+            {screen === "loading" && (
+              <motion.div
+                key="loading"
+                className="screen-frame"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0, scale: 0.96, filter: "blur(6px)" }}
+                transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <LoadingScreen />
+              </motion.div>
+            )}
 
-      {screen === "notfound" && (
-        <NotFoundScreen
-          onRetry={geocoderLookup}
-          onRelocate={() => {
-            isManualLookup.current = false;
-            setStatus(STATUS.GETTING_YOUR_LOCATION);
-          }}
-          userCoordinates={userCoordinates}
-        />
-      )}
+            {screen === "notfound" && (
+              <motion.div
+                key="notfound"
+                className="screen-frame"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <NotFoundScreen
+                  onRetry={geocoderLookup}
+                  onRelocate={() => {
+                    setIsChangingLocation(false);
+                    isManualLookup.current = false;
+                    setStatus(STATUS.GETTING_YOUR_LOCATION);
+                  }}
+                  onBack={randomPlace ? handleCancelChange : undefined}
+                  variant={isChangingLocation ? "change" : "lost"}
+                  userCoordinates={userCoordinates}
+                />
+              </motion.div>
+            )}
 
-      {screen === "noresults" && (
-        <NoResultsScreen
-          onSearch={geocoderLookup}
-          onReset={handleReset}
-          userCoordinates={userCoordinates}
-        />
-      )}
+            {screen === "noresults" && (
+              <motion.div
+                key="noresults"
+                className="screen-frame"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <NoResultsScreen
+                  onSearch={geocoderLookup}
+                  onReset={handleReset}
+                  userCoordinates={userCoordinates}
+                />
+              </motion.div>
+            )}
 
-      {screen === "result" && randomPlace && (
-        <ResultScreen
-          place={randomPlace}
-          recommendation={activeRecommendation}
-          pickNumber={pickNumber}
-          rejecting={rejecting}
-          rejectionLine={rejectionLine}
-          showMapPicker={showMapPicker}
-          mapServices={getMapServices()}
-          onToggleMapPicker={() => setShowMapPicker((prev) => !prev)}
-          onCloseMapPicker={() => setShowMapPicker(false)}
-          onReject={handleReject}
-          onSkip={handleSoftSkip}
-          onWrongLocation={handleWrongLocation}
-          onShare={() => setScreen("share")}
-          mapPickerRef={mapPickerRef}
-          mapRef={mapRef}
-          token={token}
-          userCoordinates={userCoordinates}
-          routePoints={routePoints}
-          routeInfo={routeInfo}
-          onMapLoad={handleMapLoad}
-          onUserLocationChange={handleUserLocationChange}
-          onUserLocationError={handleUserLocationError}
-        />
+            {screen === "result" && randomPlace && (
+              <motion.div
+                key="result"
+                className="screen-frame"
+                initial={{ opacity: 0, y: 26, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <ResultScreen
+                  place={randomPlace}
+                  recommendation={activeRecommendation}
+                  peek={
+                    peek
+                      ? {
+                          name: peek.recommendation.name,
+                          photoUrl: peek.recommendation.photoUrl,
+                          isTopPick: peek.recommendation.source === "top_pick",
+                        }
+                      : null
+                  }
+                  pickNumber={pickNumber}
+                  rejecting={rejecting}
+                  rejectionLine={rejectionLine}
+                  showMapPicker={showMapPicker}
+                  mapServices={getMapServices()}
+                  onToggleMapPicker={() => setShowMapPicker((prev) => !prev)}
+                  onCloseMapPicker={() => setShowMapPicker(false)}
+                  picked={picked}
+                  onSkip={handleSoftSkip}
+                  onPick={handlePick}
+                  onBack={handleBack}
+                  onShare={() => setScreen("share")}
+                  mapPickerRef={mapPickerRef}
+                  mapRef={mapRef}
+                  token={token}
+                  userCoordinates={userCoordinates}
+                  routePoints={routePoints}
+                  routeInfo={routeInfo}
+                  onMapLoad={handleMapLoad}
+                  onUserLocationChange={handleUserLocationChange}
+                  onUserLocationError={handleUserLocationError}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       )}
 
       {screen === "share" && randomPlace && (

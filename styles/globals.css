@@ -42,6 +42,22 @@ a { color: var(--accent); text-decoration: underline; }
   background: var(--bg);
 }
 
+/* Crossfade stage: the loading / first-pick / fallback screens overlap here so
+   one can defocus out while the next rises in (see Map.tsx AnimatePresence). */
+.screen-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.screen-frame {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ── Header ─────────────────────────────────── */
 .header {
   padding: 14px 26px;
@@ -72,12 +88,64 @@ a { color: var(--accent); text-decoration: underline; }
   font-size: 16px;
 }
 
+.header-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
 .header-title {
   font-family: var(--display);
   font-weight: 800;
   font-size: 20px;
   letter-spacing: -0.025em;
   text-transform: uppercase;
+  line-height: 1;
+}
+
+.header-tagline {
+  font-family: var(--body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* City indicator + location changer (top-right). */
+.header-location {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  color: var(--muted);
+  font-family: var(--body);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.header-location:hover {
+  color: var(--ink);
+  border-color: rgba(21, 19, 15, 0.22);
+}
+
+.header-location-label {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-location-caret {
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.7;
 }
 
 /* ── Chip ────────────────────────────────────── */
@@ -193,6 +261,25 @@ a { color: var(--accent); text-decoration: underline; }
   flex-direction: column;
   gap: 8px;
   align-items: flex-start;
+}
+
+.notfound-back {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  color: var(--muted);
+  font-family: var(--body);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.notfound-back:hover {
+  color: var(--ink);
+  border-color: rgba(21, 19, 15, 0.22);
 }
 
 .notfound-headline {
@@ -668,12 +755,440 @@ a { color: var(--accent); text-decoration: underline; }
   z-index: 2;
 }
 
+/* The two result phases (deck / picked detail) overlap here so AnimatePresence
+   can crossfade between them without a layout jump. */
+.result-phases {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.result-phase {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .result-card {
   padding: 24px 28px 28px;
   display: flex;
   flex-direction: column;
   gap: 14px;
   overflow: auto;
+}
+
+/* Picked-view hero: a swipeable carousel of the route map + the Yelp photo. */
+.result-media {
+  background: #1a1a1a;
+}
+
+.result-media-track {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  will-change: transform;
+}
+
+.result-media-slide {
+  position: relative;
+  flex: 0 0 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.result-media-map {
+  position: absolute;
+  inset: 0;
+}
+
+.result-media-map > div {
+  width: 100%;
+  height: 100%;
+}
+
+/* When the carousel can swipe, the map is a static preview so a drag switches
+   slides instead of panning the map. */
+.result-media-map--locked {
+  pointer-events: none;
+}
+
+.result-media-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.result-media .result-map-chips {
+  pointer-events: none;
+}
+
+.result-media-dots {
+  position: absolute;
+  bottom: 12px;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+}
+
+.result-media-dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.result-media-dot--active {
+  background: #fff;
+  transform: scale(1.25);
+}
+
+/* ---- Browse phase: the swipe deck (no map) ---- */
+
+.swipe-deck {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  background: var(--bg);
+  padding: 18px;
+}
+
+.swipe-deck--toppick {
+  background: var(--tp-bg, #15130f);
+}
+
+/* Blurred map of the user's area behind the deck — desktop only — so the card
+   floats over its surroundings instead of flat cream. */
+.swipe-deck-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  display: none;
+}
+
+@media (min-width: 769px) {
+  .swipe-deck-bg {
+    display: block;
+  }
+}
+
+.swipe-deck-bg-map {
+  position: absolute;
+  /* Overscan + scale so the blur's soft edges fall outside the viewport. */
+  inset: -10%;
+  filter: blur(24px) saturate(1.05);
+  transform: scale(1.12);
+}
+
+.swipe-deck-bg-map > div {
+  width: 100%;
+  height: 100%;
+}
+
+/* Scrim over the blurred map so the cards and chips stay legible. */
+.swipe-deck-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(242, 235, 220, 0.6);
+}
+
+.swipe-deck--toppick .swipe-deck-bg::after {
+  background: rgba(21, 19, 15, 0.62);
+}
+
+/* The stack: the draggable top card sits over a static peek card so a swipe
+   reveals the next (already-buffered) pick beneath — Tinder-style deck. */
+.swipe-stack {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 440px;
+  min-height: 0;
+}
+
+.swipe-card,
+.swipe-peek-card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.16), 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+
+.swipe-card {
+  z-index: 2;
+  touch-action: pan-y;
+  cursor: grab;
+  will-change: transform;
+}
+
+.swipe-card:active {
+  cursor: grabbing;
+}
+
+.swipe-peek-card {
+  z-index: 1;
+  transform: scale(0.96) translateY(10px);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* Blur the peek so the next pick's photo/name can't be previewed through the
+   stack. The scale covers the transparent bleed a blur leaves at the edges. */
+.swipe-peek-card .swipe-card-photo {
+  filter: blur(24px);
+  transform: scale(1.2);
+}
+
+.swipe-peek-card .result-headline--peek {
+  filter: blur(18px);
+}
+
+/* The card's visual: a full-bleed Yelp photo (or a map of the place when there
+   is no photo); header + headline overlay a gradient scrim. */
+.swipe-card-media {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 18px;
+  overflow: hidden;
+  background: #1a1a1a;
+}
+
+.swipe-card-media--noimg {
+  background: linear-gradient(150deg, var(--accent) 0%, #b8371c 100%);
+}
+
+.swipe-card-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+.swipe-card-map {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.swipe-card-map > div {
+  width: 100%;
+  height: 100%;
+}
+
+.swipe-card-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.42) 0%,
+    rgba(0, 0, 0, 0) 26%,
+    rgba(0, 0, 0, 0.12) 50%,
+    rgba(0, 0, 0, 0.82) 100%
+  );
+}
+
+.swipe-card-media .result-card-header,
+.swipe-card-media-foot {
+  position: relative;
+  z-index: 2;
+}
+
+/* Header chips sit over the photo — give them a frosted-glass backing so the
+   text (e.g. green "Open now") stays legible against any image. */
+.swipe-card-media .result-card-header .chip:not(.chip--toppick) {
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-color: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.swipe-card-media .result-headline {
+  color: #fff;
+  font-size: clamp(40px, 6vw, 60px);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
+}
+
+.swipe-card-media .result-headline span {
+  color: #fff;
+}
+
+.swipe-card-media-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.swipe-card-actions {
+  flex: 0 0 auto;
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg);
+}
+
+/* Drag stamps that fade in with the swipe (opacity driven by motion). */
+.swipe-stamp {
+  position: absolute;
+  top: 78px;
+  z-index: 3;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: clamp(20px, 4vw, 34px);
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  padding: 6px 14px;
+  border-radius: 12px;
+  border: 4px solid;
+  pointer-events: none;
+}
+
+.swipe-stamp--accept {
+  right: 18px;
+  color: #18a558;
+  border-color: #18a558;
+  background: rgba(255, 255, 255, 0.14);
+  transform: rotate(12deg);
+}
+
+.swipe-stamp--skip {
+  left: 18px;
+  color: #fff;
+  border-color: #fff;
+  background: rgba(0, 0, 0, 0.2);
+  transform: rotate(-12deg);
+}
+
+/* Skip + "I'm in" sit on one row, centered as a group. */
+.swipe-card-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.swipe-card-buttons .btn-take-me {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 16px 28px;
+  font-size: 17px;
+}
+
+.swipe-card-buttons .btn-next {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.result-swipe-hint {
+  text-align: center;
+  font-family: var(--body);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.65;
+}
+
+/* Shown only when the prefetch buffer momentarily drains under fast swiping. */
+.swipe-finding-next {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border-radius: 24px;
+  background: rgba(224, 74, 42, 0.96);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  animation: flashIn 0.4s ease;
+}
+
+.result-headline--peek {
+  color: #fff;
+  font-size: clamp(34px, 5vw, 48px);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
+}
+
+.result-headline--peek span {
+  color: #fff;
+}
+
+/* Top-pick deck takeover */
+.swipe-deck--toppick .swipe-card,
+.swipe-deck--toppick .swipe-card-actions {
+  background: var(--tp-bg);
+}
+
+.swipe-deck--toppick .swipe-card-media--noimg {
+  background: linear-gradient(150deg, #2a2410 0%, #15130f 100%);
+}
+
+.swipe-deck--toppick .result-swipe-hint {
+  color: var(--tp-muted);
+}
+
+.swipe-deck--toppick .btn-next {
+  color: #fff;
+  border-color: var(--tp-hairline);
+}
+
+/* ---- Picked phase: results + map actions ---- */
+
+.detail-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.btn-back {
+  width: 100%;
+  padding: 14px;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+.result-layout--toppick .btn-back {
+  color: #fff;
+  background: var(--tp-card);
+  border-color: var(--tp-hairline);
 }
 
 .result-card-header {
@@ -812,27 +1327,6 @@ a { color: var(--accent); text-decoration: underline; }
   border: 1px solid var(--hairline);
   border-radius: 14px;
   cursor: pointer;
-}
-
-.btn-wrong-location-link {
-  display: block;
-  width: 100%;
-  margin: 10px 0 0;
-  padding: 8px 0;
-  font-family: var(--display);
-  font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-  background: transparent;
-  border: none;
-  text-align: center;
-  cursor: pointer;
-}
-
-.btn-wrong-location-link:hover {
-  color: var(--ink);
 }
 
 /* Map picker dropdown */
@@ -1256,6 +1750,15 @@ a { color: var(--accent); text-decoration: underline; }
     font-size: 17px;
   }
 
+  /* Make room for the functional city indicator on small screens. */
+  .header-tagline {
+    display: none;
+  }
+
+  .header-location-label {
+    max-width: 130px;
+  }
+
   .loading-headline {
     font-size: 70px;
   }
@@ -1286,11 +1789,16 @@ a { color: var(--accent); text-decoration: underline; }
     padding: 18px 18px 22px;
   }
 
-  .result-headline {
-    font-size: 52px;
+  .swipe-deck {
+    padding: 12px;
   }
 
-  .result-actions {
+  .swipe-card-actions {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .result-actions,
+  .detail-actions {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
@@ -1461,10 +1969,18 @@ a { color: var(--accent); text-decoration: underline; }
   color: #fff;
 }
 
-.app-root--toppick .header .chip--muted {
+.app-root--toppick .header-tagline {
   color: rgba(255, 255, 255, 0.5);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.app-root--toppick .header-location {
+  color: rgba(255, 255, 255, 0.7);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.app-root--toppick .header-location:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
 .result-layout--toppick {
@@ -1528,14 +2044,6 @@ a { color: var(--accent); text-decoration: underline; }
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: transparent;
-}
-
-.app-root--toppick .btn-wrong-location-link {
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.app-root--toppick .btn-wrong-location-link:hover {
-  color: #fff;
 }
 
 .result-layout--toppick .map-picker-dropdown {

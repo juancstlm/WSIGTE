@@ -9,6 +9,12 @@ import { track } from "../shared/utils";
 interface NotFoundScreenProps {
   onRetry: (query: string) => void;
   onRelocate?: () => void;
+  // When set (and variant is "change"), shows a "Back to picks" affordance to
+  // return to the current recommendation without re-rolling.
+  onBack?: () => void;
+  // "lost" = GPS failed (default copy); "change" = the user intentionally opened
+  // the location changer from the header indicator (neutral copy).
+  variant?: "lost" | "change";
   userCoordinates?: { latitude: number; longitude: number };
 }
 
@@ -21,6 +27,8 @@ const HEADLINES: { main: string; br: string; tail: string }[] = [
   { main: "GPS", br: "shrugged", tail: ", loudly." },
   { main: "Coordinates", br: "missing", tail: ", classic." },
 ];
+
+const CHANGE_HEADLINE = { main: "Where", br: "to", tail: ", then?" };
 
 // Stubbed curated foodie districts — will be replaced by an API later.
 const DISTRICTS: District[] = [
@@ -44,12 +52,22 @@ function CrosshairIcon({ size = 16, color = "currentColor" }: { size?: number; c
   );
 }
 
-export function NotFoundScreen({ onRetry, onRelocate, userCoordinates }: NotFoundScreenProps) {
+export function NotFoundScreen({
+  onRetry,
+  onRelocate,
+  onBack,
+  variant = "lost",
+  userCoordinates,
+}: NotFoundScreenProps) {
   const [locating, setLocating] = useState(false);
   const searchRef = useRef<AddressSearchHandle | null>(null);
+  const isChange = variant === "change";
   const headline = useMemo(
-    () => HEADLINES[Math.floor(Math.random() * HEADLINES.length)],
-    []
+    () =>
+      isChange
+        ? CHANGE_HEADLINE
+        : HEADLINES[Math.floor(Math.random() * HEADLINES.length)],
+    [isChange]
   );
   const curatedDistrictsEnabled = useFeatureFlag("curated-districts");
 
@@ -74,13 +92,22 @@ export function NotFoundScreen({ onRetry, onRelocate, userCoordinates }: NotFoun
       <div className={"notfound-inner" + (curatedDistrictsEnabled ? "" : " notfound-inner--centered")}>
         <div className="notfound-hero">
           <div className="notfound-hero-text">
-            <span className="chip chip--filled chip--accent chip--white">! we lost you</span>
+            {isChange && onBack && (
+              <button type="button" className="notfound-back" onClick={onBack}>
+                ← Back to picks
+              </button>
+            )}
+            <span className="chip chip--filled chip--accent chip--white">
+              {isChange ? "📍 change location" : "! we lost you"}
+            </span>
             <div className="notfound-headline">
               {headline.main}<br />{headline.br}<span>{headline.tail}</span>
             </div>
           </div>
           <div className="notfound-subtext">
-            GPS whiffed. Yell a neighborhood, type an address, or ask the satellites to try again.
+            {isChange
+              ? "Type an address or neighborhood, or jump back to your current location."
+              : "GPS whiffed. Yell a neighborhood, type an address, or ask the satellites to try again."}
           </div>
         </div>
 

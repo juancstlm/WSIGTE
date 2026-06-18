@@ -1,10 +1,18 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ColorScheme,
   Map as MapKitMap,
   Marker,
   Polyline,
 } from "mapkit-react";
+import {
+  AnimatePresence,
+  animate,
+  motion,
+  useMotionValue,
+  useTransform,
+  type PanInfo,
+} from "motion/react";
 import { bumpSession, track } from "../shared/utils";
 import type {
   Coordinate,
@@ -28,6 +36,7 @@ export interface PlaceInfo {
   hours: HoursSlot[] | null;
   yelpUrl: string | null;
   photoUrl: string | null;
+  photos: string[];
 }
 
 export function getPlaceInfo(
@@ -47,12 +56,36 @@ export function getPlaceInfo(
     hours: recommendation?.hours ?? null,
     yelpUrl: recommendation?.yelpUrl ?? null,
     photoUrl: recommendation?.photoUrl ?? null,
+    photos:
+      recommendation?.photos && recommendation.photos.length > 0
+        ? recommendation.photos
+        : recommendation?.photoUrl
+          ? [recommendation.photoUrl]
+          : [],
   };
 }
 
 function formatDistanceMi(meters: number): string {
   const mi = meters / 1609.344;
   return mi < 0.1 ? `${(meters / 0.3048).toFixed(0)} FT` : `${mi.toFixed(1)} MI`;
+}
+
+// Straight-line distance — used on the swipe cards so we don't fire a Directions
+// call per browsed pick (the driving distance is computed once a card is picked).
+function haversineMeters(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function formatDriveMinutes(seconds: number): string {
@@ -116,9 +149,17 @@ function deriveOpenNow(hours: HoursSlot[] | null, openNowHint: boolean | null): 
 const ACCENT = "#E04A2A";
 const GOLD = "#C4960C";
 
+export interface PeekInfo {
+  name: string;
+  photoUrl: string | null;
+  isTopPick: boolean;
+}
+
 export interface ResultScreenProps {
   place: mapkit.Place;
   recommendation: RecommendationResult | null;
+  peek: PeekInfo | null;
+  picked: boolean;
   pickNumber: number;
   rejecting: boolean;
   rejectionLine: string;
@@ -126,9 +167,9 @@ export interface ResultScreenProps {
   mapServices: Array<{ name: string; url: string }>;
   onToggleMapPicker: () => void;
   onCloseMapPicker: () => void;
-  onReject: () => void;
   onSkip: () => void;
-  onWrongLocation: () => void;
+  onPick: () => void;
+  onBack: () => void;
   onShare: () => void;
   mapPickerRef: React.RefObject<HTMLDivElement | null>;
   mapRef: React.RefObject<mapkit.Map | null>;
@@ -141,19 +182,582 @@ export interface ResultScreenProps {
   onUserLocationError: (event?: UserLocationErrorEvent) => void;
 }
 
-export function ResultScreen({
+// Two phases: browse the swipe deck (cards only, no map), then — once the user
+// accepts a pick — the map + full results take over. The phases crossfade (and
+// the results rise in) so accepting a card flows straight into the map.
+export function ResultScreen(props: ResultScreenProps) {
+  return (
+    <div className="result-phases">
+      <AnimatePresence initial={false}>
+        {props.picked ? (
+          <motion.div
+            key="detail"
+            className="result-phase"
+            initial={{ opacity: 0, y: 28, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 28, scale: 0.98 }}
+            transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <ResultDetail {...props} />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="deck"
+            className="result-phase"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, scale: 1.04 }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <SwipeDeck {...props} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// -- Browse phase: the swipe deck (no map) --
+
+function SwipeDeck({
   place,
   recommendation,
+  peek,
   pickNumber,
   rejecting,
   rejectionLine,
+  token,
+  userCoordinates,
+  onSkip,
+  onPick,
+}: ResultScreenProps) {
+  const info = getPlaceInfo(place, recommendation);
+  const isTopPick = recommendation?.source === "top_pick";
+  const bgCenter = userCoordinates ?? place.coordinate;
+
+  return (
+    <div
+      className={`swipe-deck${isTopPick ? " swipe-deck--toppick" : ""}`}
+    >
+      <DeckBackgroundMap token={token} center={bgCenter} isTopPick={isTopPick} />
+
+      <div className="swipe-stack">
+        {peek && (
+          <div
+            className={`swipe-card swipe-peek-card${
+              peek.isTopPick ? " swipe-peek-card--toppick" : ""
+            }`}
+            aria-hidden
+          >
+            <div
+              className={`swipe-card-media${
+                peek.photoUrl ? "" : " swipe-card-media--noimg"
+              }`}
+            >
+              {peek.photoUrl && (
+                <img className="swipe-card-photo" src={peek.photoUrl} alt="" />
+              )}
+              <div className="swipe-card-scrim" />
+              <div className="result-headline result-headline--peek">
+                <span>{peek.name}.</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <AnimatePresence initial={false}>
+          <SwipeCard
+            key={place.id}
+            place={place}
+            info={info}
+            isTopPick={isTopPick}
+            pickNumber={pickNumber}
+            token={token}
+            userCoordinates={userCoordinates}
+            onSkip={onSkip}
+            onPick={onPick}
+          />
+        </AnimatePresence>
+
+        {rejecting && (
+          <div className="swipe-finding-next">
+            <div className="rejection-text">{rejectionLine}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const SWIPE_THRESHOLD = 120;
+const VELOCITY_THRESHOLD = 600;
+
+// Play the "you can swipe me" swing only on the very first card of the session.
+let swipeHintPlayed = false;
+
+interface SwipeCardProps {
+  place: mapkit.Place;
+  info: PlaceInfo;
+  isTopPick: boolean;
+  pickNumber: number;
+  token: string;
+  userCoordinates: Coordinate | undefined;
+  onSkip: () => void;
+  onPick: () => void;
+}
+
+// One swipeable card. Each pick gets its own keyed instance (and thus its own
+// motion value), so a card flinging off-screen never interferes with the next
+// one entering. Swipe left = skip, swipe right = accept (lock in the pick and
+// reveal the map); the buttons below remain as an accessible fallback.
+function SwipeCard({
+  place,
+  info,
+  isTopPick,
+  pickNumber,
+  token,
+  userCoordinates,
+  onSkip,
+  onPick,
+}: SwipeCardProps) {
+  const openNow = deriveOpenNow(info.hours, info.openNow);
+  const distanceMeters = userCoordinates
+    ? haversineMeters(
+        userCoordinates.latitude,
+        userCoordinates.longitude,
+        place.coordinate.latitude,
+        place.coordinate.longitude
+      )
+    : null;
+  // Stable per pick — the label rotates when the place changes, not on every render.
+  const softRejectLabel = useMemo(
+    () =>
+      SOFT_REJECT_LABELS[Math.floor(Math.random() * SOFT_REJECT_LABELS.length)],
+    []
+  );
+  const [imgFailed, setImgFailed] = useState(false);
+  const hasPhoto = !!info.photoUrl && !imgFailed;
+
+  const x = useMotionValue(0);
+  const rotate = useTransform(x, [-300, 300], [-12, 12]);
+  const acceptStampOpacity = useTransform(x, [30, 140], [0, 1]);
+  const skipStampOpacity = useTransform(x, [-140, -30], [1, 0]);
+
+  const springBack = () =>
+    animate(x, 0, { type: "spring", stiffness: 350, damping: 32 });
+
+  // On first load, swing the card right→left→center once so the swipe gesture
+  // is discoverable. Fires only for the first card and bows out the moment the
+  // user grabs it.
+  const hintControls = useRef<ReturnType<typeof animate> | null>(null);
+  useEffect(() => {
+    if (swipeHintPlayed) return;
+    swipeHintPlayed = true;
+    const controls = animate(x, [0, 70, -56, 0], {
+      duration: 1.2,
+      ease: "easeInOut",
+      times: [0, 0.38, 0.72, 1],
+      delay: 0.55,
+    });
+    hintControls.current = controls;
+    return () => controls.stop();
+  }, [x]);
+
+  const handleDragEnd = (_e: unknown, infoPan: PanInfo) => {
+    const { offset, velocity } = infoPan;
+    if (offset.x > SWIPE_THRESHOLD || velocity.x > VELOCITY_THRESHOLD) {
+      track("pick_swiped", { direction: "accept" });
+      // Don't spring back — let the card ride the deck's exit into the map view.
+      onPick();
+    } else if (offset.x < -SWIPE_THRESHOLD || velocity.x < -VELOCITY_THRESHOLD) {
+      track("pick_swiped", { direction: "skip" });
+      const w = typeof window !== "undefined" ? window.innerWidth : 800;
+      animate(x, -w * 1.2, { duration: 0.32, ease: "easeIn" });
+      onSkip();
+    } else {
+      springBack();
+    }
+  };
+
+  return (
+    <motion.div
+      className="swipe-card"
+      style={{ x, rotate }}
+      drag="x"
+      dragElastic={0.5}
+      dragMomentum={false}
+      onDragStart={() => hintControls.current?.stop()}
+      onDragEnd={handleDragEnd}
+      initial={{ scale: 0.94, y: 14, opacity: 0.5 }}
+      animate={{ scale: 1, y: 0, opacity: 1 }}
+      exit={{ opacity: 0, transition: { duration: 0.2 } }}
+      transition={{ type: "spring", stiffness: 320, damping: 32 }}
+    >
+      <div
+        className={`swipe-card-media${
+          hasPhoto ? "" : " swipe-card-media--noimg"
+        }`}
+      >
+        {hasPhoto ? (
+          <img
+            className="swipe-card-photo"
+            src={info.photoUrl!}
+            alt={info.name}
+            loading="lazy"
+            onError={() => setImgFailed(true)}
+          />
+        ) : (
+          // No Yelp photo — fall back to a static map of the place as the visual.
+          <CardLocationMap token={token} place={place} isTopPick={isTopPick} />
+        )}
+        <div className="swipe-card-scrim" />
+
+        <motion.div
+          className="swipe-stamp swipe-stamp--accept"
+          style={{ opacity: acceptStampOpacity }}
+        >
+          I&apos;m in →
+        </motion.div>
+        <motion.div
+          className="swipe-stamp swipe-stamp--skip"
+          style={{ opacity: skipStampOpacity }}
+        >
+          {softRejectLabel}
+        </motion.div>
+
+        <div className="result-card-header">
+          {isTopPick ? (
+            <span className="chip chip--toppick">★ Top Pick</span>
+          ) : (
+            <span className="chip chip--muted">
+              Pick №{String(pickNumber).padStart(3, "0")}
+            </span>
+          )}
+          <div className="result-card-header-right">
+            {openNow === true && (
+              <span className="chip chip--green">● Open now</span>
+            )}
+            {openNow === false && (
+              <span className="chip chip--muted">● Closed</span>
+            )}
+          </div>
+        </div>
+
+        <div className="swipe-card-media-foot">
+          <div className="result-headline">
+            GO EAT<br />
+            <span>{info.name}.</span>
+          </div>
+
+          <div className="result-tags">
+            <span className="chip chip--card">
+              {info.categoryDisplayName || "Restaurant"}
+            </span>
+            {info.priceLevel && (
+              <span className="chip chip--card">{info.priceLevel}</span>
+            )}
+            {info.rating != null && (
+              <span className="chip chip--card">★ {info.rating.toFixed(1)}</span>
+            )}
+            {distanceMeters != null && (
+              <span className="chip chip--card">
+                {formatDistanceMi(distanceMeters)} away
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="swipe-card-actions">
+        <div className="result-swipe-hint">← skip · pick →</div>
+        <div className="swipe-card-buttons">
+          <button className="btn-next" onClick={onSkip}>
+            {softRejectLabel}
+          </button>
+          <button className="btn-take-me" onClick={onPick}>
+            I&apos;m in →
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// A heavily-blurred, non-interactive map of the user's area painted behind the
+// deck (desktop only, via CSS) to break up the flat background. Keyed on the
+// center so it doesn't re-mount as the user swipes through picks.
+function DeckBackgroundMap({
+  token,
+  center,
+  isTopPick,
+}: {
+  token: string;
+  center: { latitude: number; longitude: number };
+  isTopPick: boolean;
+}) {
+  return (
+    <div
+      className={`swipe-deck-bg${isTopPick ? " swipe-deck-bg--toppick" : ""}`}
+      aria-hidden
+    >
+      <div className="swipe-deck-bg-map">
+        <MapKitMap
+          token={token}
+          colorScheme={isTopPick ? ColorScheme.Dark : ColorScheme.Light}
+          initialRegion={{
+            centerLatitude: center.latitude,
+            centerLongitude: center.longitude,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          }}
+          isScrollEnabled={false}
+          isZoomEnabled={false}
+          isRotationEnabled={false}
+          showsMapTypeControl={false}
+          showsZoomControl={false}
+          showsUserLocationControl={false}
+        />
+      </div>
+    </div>
+  );
+}
+
+// A non-interactive map centered on the place, used as the card's visual when
+// there's no Yelp photo. Pointer-events are disabled in CSS so the card stays
+// draggable when the grab starts over the map.
+function CardLocationMap({
+  token,
+  place,
+  isTopPick,
+}: {
+  token: string;
+  place: mapkit.Place;
+  isTopPick: boolean;
+}) {
+  return (
+    <div className="swipe-card-map" aria-hidden>
+      <MapKitMap
+        token={token}
+        colorScheme={isTopPick ? ColorScheme.Dark : ColorScheme.Light}
+        initialRegion={{
+          centerLatitude: place.coordinate.latitude,
+          centerLongitude: place.coordinate.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        }}
+        isScrollEnabled={false}
+        isZoomEnabled={false}
+        isRotationEnabled={false}
+        showsMapTypeControl={false}
+        showsZoomControl={false}
+        showsUserLocationControl={false}
+      >
+        <Marker
+          latitude={place.coordinate.latitude}
+          longitude={place.coordinate.longitude}
+          color={isTopPick ? GOLD : ACCENT}
+          glyphText="★"
+        />
+      </MapKitMap>
+    </div>
+  );
+}
+
+// -- Picked phase: the map + full results (no deck) --
+
+interface ResultMediaProps {
+  place: mapkit.Place;
+  name: string;
+  photos: string[];
+  isTopPick: boolean;
+  token: string;
+  mapRef: React.RefObject<mapkit.Map | null>;
+  userCoordinates: Coordinate | undefined;
+  routePoints: Coordinate[][];
+  routeInfo: { distanceMeters: number; durationSeconds: number } | null;
+  onMapLoad: () => void;
+  onUserLocationChange: (event: UserLocationChangeEvent) => void;
+  onUserLocationError: (event?: UserLocationErrorEvent) => void;
+}
+
+// The hero area of the picked view: a swipeable carousel of [route map, ...Yelp
+// photos] (up to 3). When at least one photo exists the map is locked
+// (non-interactive, pointer-events off in CSS) so a horizontal drag swipes
+// between slides instead of panning the map; with no photo it's the lone,
+// fully-interactive map.
+function ResultMedia({
+  place,
+  name,
+  photos,
+  isTopPick,
+  token,
+  mapRef,
+  userCoordinates,
+  routePoints,
+  routeInfo,
+  onMapLoad,
+  onUserLocationChange,
+  onUserLocationError,
+}: ResultMediaProps) {
+  // Drop any individual photo that fails to load (keyed by URL).
+  const [failedPhotos, setFailedPhotos] = useState<Set<string>>(new Set());
+  const validPhotos = photos.filter((p) => !failedPhotos.has(p));
+  const slideCount = 1 + validPhotos.length;
+  const markerColor = isTopPick ? GOLD : ACCENT;
+
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  const [index, setIndex] = useState(0);
+  const x = useMotionValue(0);
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const measure = () => setWidth(el.offsetWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Keep the track snapped to the current slide as width/index change.
+  useEffect(() => {
+    x.set(-index * width);
+  }, [width, index, x]);
+
+  // If a photo errors out, its slide disappears — keep the index in range.
+  useEffect(() => {
+    if (index > slideCount - 1) setIndex(slideCount - 1);
+  }, [slideCount, index]);
+
+  const goTo = (i: number) => {
+    const clamped = Math.max(0, Math.min(slideCount - 1, i));
+    setIndex(clamped);
+    animate(x, -clamped * width, { type: "spring", stiffness: 320, damping: 36 });
+  };
+
+  const handleDragEnd = (_e: unknown, info: PanInfo) => {
+    const threshold = Math.max(40, width * 0.2);
+    if (info.offset.x < -threshold || info.velocity.x < -500) goTo(index + 1);
+    else if (info.offset.x > threshold || info.velocity.x > 500) goTo(index - 1);
+    else goTo(index);
+  };
+
+  return (
+    <div className="result-map-inner result-media" ref={viewportRef}>
+      <motion.div
+        className="result-media-track"
+        style={{ x }}
+        drag={slideCount > 1 ? "x" : false}
+        dragConstraints={{ left: -(slideCount - 1) * width, right: 0 }}
+        dragElastic={0.12}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="result-media-slide">
+          <div
+            className={`result-media-map${
+              slideCount > 1 ? " result-media-map--locked" : ""
+            }`}
+          >
+            <MapKitMap
+              ref={mapRef}
+              token={token}
+              showsUserLocation
+              colorScheme={isTopPick ? ColorScheme.Dark : ColorScheme.Light}
+              isScrollEnabled={slideCount === 1}
+              isZoomEnabled={slideCount === 1}
+              isRotationEnabled={slideCount === 1}
+              showsMapTypeControl={false}
+              showsZoomControl={false}
+              onLoad={onMapLoad}
+              onUserLocationChange={onUserLocationChange}
+              onUserLocationError={onUserLocationError}
+            >
+              {userCoordinates && (
+                <Marker
+                  latitude={userCoordinates.latitude}
+                  longitude={userCoordinates.longitude}
+                  color={markerColor}
+                  glyphText="📍"
+                />
+              )}
+              <Marker
+                latitude={place.coordinate.latitude}
+                longitude={place.coordinate.longitude}
+                color={markerColor}
+                glyphText="★"
+                title={place.name}
+                subtitle={place.formattedAddress}
+              />
+              {routePoints.map((points, i) => (
+                <Polyline
+                  key={`route-${i}`}
+                  points={points}
+                  lineWidth={5}
+                  strokeColor={markerColor}
+                />
+              ))}
+            </MapKitMap>
+          </div>
+          <div className="result-map-chips">
+            <span className="chip chip--white">📍 You</span>
+            <span
+              className="chip chip--white"
+              style={{ color: isTopPick ? GOLD : "var(--accent)" }}
+            >
+              ★ {name}
+            </span>
+            {routeInfo && (
+              <span className="chip chip--white">
+                {formatDriveMinutes(routeInfo.durationSeconds)}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {validPhotos.map((src, i) => (
+          <div className="result-media-slide" key={src}>
+            <img
+              className="result-media-photo"
+              src={src}
+              alt={`${name} photo ${i + 1}`}
+              loading="lazy"
+              onError={() =>
+                setFailedPhotos((prev) => new Set(prev).add(src))
+              }
+            />
+          </div>
+        ))}
+      </motion.div>
+
+      {slideCount > 1 && (
+        <div className="result-media-dots">
+          {Array.from({ length: slideCount }).map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              className={`result-media-dot${
+                i === index ? " result-media-dot--active" : ""
+              }`}
+              aria-label={i === 0 ? "Show map" : `Show photo ${i}`}
+              onClick={() => goTo(i)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResultDetail({
+  place,
+  recommendation,
+  pickNumber,
   showMapPicker,
   mapServices,
   onToggleMapPicker,
   onCloseMapPicker,
-  onReject,
-  onSkip,
-  onWrongLocation,
+  onBack,
   onShare,
   mapPickerRef,
   mapRef,
@@ -165,79 +769,29 @@ export function ResultScreen({
   onUserLocationChange,
   onUserLocationError,
 }: ResultScreenProps) {
-  const shareEnabled = useFeatureFlag('share-enabled')
+  const shareEnabled = useFeatureFlag("share-enabled");
   const info = getPlaceInfo(place, recommendation);
   const openNow = deriveOpenNow(info.hours, info.openNow);
   const hoursBlurb = formatHoursBlurb(info.hours, info.openNow);
   const isTopPick = recommendation?.source === "top_pick";
-  const markerColor = isTopPick ? GOLD : ACCENT;
-  // Stable per pick — the label rotates when the place changes, not on every render.
-  const softRejectLabel = useMemo(
-    () =>
-      SOFT_REJECT_LABELS[Math.floor(Math.random() * SOFT_REJECT_LABELS.length)],
-    [place.id]
-  );
 
   return (
     <div className={`result-layout${isTopPick ? " result-layout--toppick" : ""}`}>
       <div className="result-map-area">
-        <div className="result-map-inner">
-          <MapKitMap
-            ref={mapRef}
-            token={token}
-            showsUserLocation
-            colorScheme={isTopPick ? ColorScheme.Dark : ColorScheme.Light}
-            onLoad={onMapLoad}
-            onUserLocationChange={onUserLocationChange}
-            onUserLocationError={onUserLocationError}
-          >
-            {userCoordinates && place && (
-              <Marker
-                latitude={userCoordinates.latitude}
-                longitude={userCoordinates.longitude}
-                color={markerColor}
-                glyphText="📍"
-              />
-            )}
-            {place && (
-              <Marker
-                latitude={place.coordinate.latitude}
-                longitude={place.coordinate.longitude}
-                color={markerColor}
-                glyphText="★"
-                title={place.name}
-                subtitle={place.formattedAddress}
-              />
-            )}
-            {routePoints.map((points, i) => (
-              <Polyline
-                key={`route-${i}`}
-                points={points}
-                lineWidth={5}
-                strokeColor={markerColor}
-              />
-            ))}
-          </MapKitMap>
-          <div className="result-map-chips">
-            <span className="chip chip--white">📍 You</span>
-            <span
-              className="chip chip--white"
-              style={{ color: isTopPick ? GOLD : "var(--accent)" }}
-            >
-              ★ {info.name}
-            </span>
-            {routeInfo && (
-              <span className="chip chip--white">
-                {formatDriveMinutes(routeInfo.durationSeconds)}
-              </span>
-            )}
-          </div>
-          {rejecting && (
-            <div className="rejection-overlay">
-              <div className="rejection-text">{rejectionLine}</div>
-            </div>
-          )}
-        </div>
+        <ResultMedia
+          place={place}
+          name={info.name}
+          photos={info.photos}
+          isTopPick={isTopPick}
+          token={token}
+          mapRef={mapRef}
+          userCoordinates={userCoordinates}
+          routePoints={routePoints}
+          routeInfo={routeInfo}
+          onMapLoad={onMapLoad}
+          onUserLocationChange={onUserLocationChange}
+          onUserLocationError={onUserLocationError}
+        />
       </div>
 
       <div className="result-card">
@@ -256,15 +810,17 @@ export function ResultScreen({
             {openNow === false && (
               <span className="chip chip--muted">● Closed</span>
             )}
-            {shareEnabled && <button
-              className="btn-share"
-              onClick={() => {
-                track("share_clicked");
-                onShare();
-              }}
-            >
-              ↗ Share
-            </button>}
+            {shareEnabled && (
+              <button
+                className="btn-share"
+                onClick={() => {
+                  track("share_clicked");
+                  onShare();
+                }}
+              >
+                ↗ Share
+              </button>
+            )}
           </div>
         </div>
 
@@ -340,7 +896,7 @@ export function ResultScreen({
 
         <div style={{ flex: 1 }} />
 
-        <div className="result-actions">
+        <div className="detail-actions">
           <div className="map-picker-wrapper" ref={mapPickerRef}>
             <button
               className="btn-take-me"
@@ -372,19 +928,10 @@ export function ResultScreen({
               </div>
             )}
           </div>
-          <button className="btn-next" onClick={onSkip}>
-            {softRejectLabel}
-          </button>
-          <button className="btn-awful" onClick={onReject}>
-            That&apos;s awful
+          <button className="btn-back" onClick={onBack}>
+            ← Pick again
           </button>
         </div>
-        <button
-          className="btn-wrong-location-link"
-          onClick={onWrongLocation}
-        >
-          Wrong location?
-        </button>
       </div>
     </div>
   );

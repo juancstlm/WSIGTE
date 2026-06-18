@@ -6,17 +6,10 @@ import { track } from "./utils";
 import {
   fetchFeatureFlags,
   fetchHealth,
-  fetchRecommendation,
   fetchSharedPlace,
   fetchToken,
   createSharedPlace,
 } from "./api";
-import { getActiveExcludedIds } from "./utils/rejections";
-import { getSoftSkippedIds } from "./utils/softSkips";
-
-const PLACES_COORD_PRECISION = 3;
-const roundCoord = (n: number) =>
-  Math.round(n * 10 ** PLACES_COORD_PRECISION) / 10 ** PLACES_COORD_PRECISION;
 
 const TOKEN_CACHE_KEY = "wsigte_mapkit_token";
 const TOKEN_EXPIRY_BUFFER_MS = 30_000;
@@ -115,43 +108,6 @@ export function useSharedPlaceQuery(id: string | undefined) {
     queryKey: ["shared-place", id],
     queryFn: () => fetchSharedPlace(id!),
     enabled: typeof id === "string" && id.length > 0,
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-}
-
-interface UseRecommendationParams {
-  latitude: number | undefined;
-  longitude: number | undefined;
-  enabled: boolean;
-  // Refetch cursor — bumped by either a hard reject or a soft skip so React
-  // Query re-runs the call with a fresh excluded list. The list itself is
-  // read inside queryFn (persistent rejections from localStorage, session
-  // soft-skips from memory) so it never gets serialized into the cache key.
-  rejectionVersion: number;
-}
-
-export function useRecommendationQuery({
-  latitude,
-  longitude,
-  enabled,
-  rejectionVersion,
-}: UseRecommendationParams) {
-  const lat = latitude !== undefined ? roundCoord(latitude) : undefined;
-  const lng = longitude !== undefined ? roundCoord(longitude) : undefined;
-  return useQuery({
-    queryKey: ["recommendation", lat, lng, rejectionVersion],
-    queryFn: () =>
-      fetchRecommendation({
-        latitude: lat!,
-        longitude: lng!,
-        excludedPlaceIds: Array.from(
-          new Set([...getActiveExcludedIds(), ...getSoftSkippedIds()])
-        ),
-      }),
-    enabled: enabled && lat !== undefined && lng !== undefined,
-    staleTime: 0,
-    gcTime: 5 * 60 * 1000,
     retry: false,
     refetchOnWindowFocus: false,
   });

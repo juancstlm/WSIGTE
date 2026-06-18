@@ -112,6 +112,8 @@ export interface PlaceEnrichment {
   yelpUrl: string | null;
   phone: string | null;
   photoUrl: string | null;
+  // Up to 3 Yelp photo URLs (includes photoUrl). Empty when Yelp has no match.
+  photos: string[];
 }
 
 export interface SharedPlace extends PlaceEnrichment {
@@ -200,6 +202,9 @@ function readEnrichment(r: Partial<PlaceEnrichment>): PlaceEnrichment {
     yelpUrl: typeof r.yelpUrl === "string" ? r.yelpUrl : null,
     phone: typeof r.phone === "string" ? r.phone : null,
     photoUrl: typeof r.photoUrl === "string" ? r.photoUrl : null,
+    photos: Array.isArray(r.photos)
+      ? r.photos.filter((p): p is string => typeof p === "string")
+      : [],
   };
 }
 

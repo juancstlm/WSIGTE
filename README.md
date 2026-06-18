@@ -9,11 +9,13 @@ Live at **[wsigte.com](https://wsigte.com)**
 1. On load, `pages/index.tsx` pings `${NEXT_PUBLIC_API_BASE_URL}/v1/health` first. If it returns non-2xx or a `down` status, the `DownScreen` ("BACK SOON.") renders with a **Try again** button that retries the boot sequence. Otherwise it fetches a short-lived MapKit JS JWT from `${NEXT_PUBLIC_API_BASE_URL}/v1/token` and caches it in `localStorage` until ~30s before expiry (decoded from the JWT payload). A failed token request also drops the user onto the `DownScreen` with the HTTP status code stamped in the header.
 2. `mapkit-react` boots a hidden map to acquire the user's coordinates via browser geolocation. If it fails or times out (10s), the Not Found screen takes over: it offers a manual address input (the shared `AddressSearch` component, powered by `mapkit.Search.autocomplete`, debounced 200ms, min 3 chars, biased to the last known region), a "Locate me" button that retries browser geolocation, and a grid of curated neighborhood tiles that submit a geocoder lookup on tap. The neighborhood list is currently a static stub (`DISTRICTS` in `components/NotFoundScreen.tsx`) — a real API will replace it later.
 3. The client `POST`s to `${NEXT_PUBLIC_API_BASE_URL}/v1/recommendations` with `{ latitude, longitude, excludedPlaceIds }`. The server returns one recommendation drawn either from a curated `top_picks` table (probabilistic — configured server-side) or from Apple's Maps Server API for nearby `Bakery | Cafe | Restaurant` POIs. The recommendation carries `name`, `address`, `latitude`, `longitude`, `appleMapsPlaceId`, and optional `blurb`. A `404` (nothing left in range — often because the user has rejected everything nearby) routes to the **No Results** screen, *not* the Not Found / "we lost you" screen: the GPS worked, so the copy owns running dry and offers a "Start over" button (clears the rejection/skip history via `clearRejections`/`clearSoftSkips` and re-rolls from the same coordinates) plus the same `AddressSearch` to look somewhere else.
-4. The recommendation is hydrated client-side via `new mapkit.PlaceLookup().getPlace(appleMapsPlaceId, cb)` to populate `telephone` and `urls` (the Apple Maps Server API doesn't expose those — only the browser-side MapKit JS does). The loading screen stays up until hydration completes or a 4 s timeout falls back to the slim payload, so the result card always renders with contact info populated when available.
-5. Rejections persist in `localStorage` (`shared/utils/rejections.ts`) with a growing TTL — 1 d, 3 d, 7 d, 14 d, 30 d as a place is rejected more times. The active list is sent on every `/v1/recommendations` call as `excludedPlaceIds`. "That's awful" records a rejection, bumps a query-key version to force a refetch, and holds the rejection overlay for at least 1.7 s.
-6. `mapkit.Directions` draws a route polyline from the user to the selected pick; the map auto-fits both points.
-7. When the server flags `source: "top_pick"`, the result screen renders the **03b · Top Pick** dark takeover: a `result-layout--toppick` modifier flips the screen to dark mode, swaps marker/route to gold, shows a gold "★ Top Pick" badge above the headline, paints the place name gold, swaps the subtext to "You unlocked a top pick. Don't waste this." and adds a "Why this is a top pick" callout that surfaces `recommendation.blurb`.
-8. The share screen `POST`s the place to `${NEXT_PUBLIC_API_BASE_URL}/v1/places` and renders a short link at `/p/{shortId}`, which hydrates from `GET /v1/places/{shortId}`.
+4. Picks are prefetched into a small client-side **buffer** (`shared/hooks/useRecommendationQueue.ts`, target 3) so the next card is ready before the user acts — no fetch gap on a swipe. The queue fills by calling `/v1/recommendations` repeatedly, passing everything already buffered (plus the user's rejections/skips) in `excludedPlaceIds` so each call returns a distinct pick; it stops (and routes to **No Results**) only when the buffer is empty and the server has nothing left nearby. Each buffered recommendation is hydrated via `new mapkit.PlaceLookup().getPlace(appleMapsPlaceId, cb)` (`shared/recommendationHydration.ts`) to populate `telephone` and `urls` (the Apple Maps Server API doesn't expose those — only the browser-side MapKit JS does), falling back to the slim payload on a 4 s timeout. The loading screen honors a minimum duration before revealing the first card.
+5. The result experience has two phases (`components/ResultScreen.tsx` routes on a `picked` flag):
+   - **Browse — the swipe deck** (`framer-motion`/`motion`, no map). Each pick is a **Tinder-style card** showing a **full-bleed Yelp photo** (`recommendation.photoUrl`, the server's `image_url`) — or, when there's no photo, a **non-interactive map of the place** as the filler (`CardLocationMap`) — with the headline + quick facts (category/price/rating) over a gradient scrim. **Swipe left to skip** (soft skip — session-only, keeps the server from re-serving it this visit), **swipe right to accept**; the same actions stay as buttons (skip · "I'm in"). Any still-active persisted rejections (`shared/utils/rejections.ts`) plus session soft-skips ride every `/v1/recommendations` call as `excludedPlaceIds`. Skipping `consume`s the buffer head and promotes the already-hydrated next card instantly (a "finding next" flash only appears if fast swiping out-runs the refill).
+   - **Picked — results + map.** Accepting reveals a **swipeable media carousel** (`ResultMedia`) in the hero spot — slide between the route map and **up to 3 Yelp photos** (`recommendation.photos`, dots indicate position; a photo that fails to load drops its own slide) — alongside full details (address/phone/website/hours), the **"Take me there"** maps-app picker, and Share. When at least one photo is present the map is locked (non-interactive) so the horizontal drag switches slides instead of panning; with no photo it's the lone interactive map. `mapkit.Directions` draws the route from the user to the pick (computed only now — not per swiped card) and auto-fits both points. A **"← Pick again"** button returns to the deck (same buffer).
+   - **Changing location.** The header's top-right **city indicator** (reverse-geocoded from the current coordinates via `mapkit.Geocoder.reverseLookup`, shows "Locating…" until resolved) doubles as the location changer: tapping it opens the full-screen `AddressSearch` (the `NotFoundScreen` in its neutral `variant="change"` copy, with a **"← Back to picks"** escape when a pick already exists) so the user can type a new place or hit "Use my location". This replaces the old "Wrong location?" link.
+6. When the server flags `source: "top_pick"`, both phases get the **Top Pick** dark takeover: a `swipe-deck--toppick` / `result-layout--toppick` modifier flips to dark mode, swaps marker/route to gold, shows a gold "★ Top Pick" badge, paints the place name gold, swaps the subtext to "You unlocked a top pick. Don't waste this." and adds a "Why this is a top pick" callout that surfaces `recommendation.blurb`.
+7. The share screen `POST`s the place to `${NEXT_PUBLIC_API_BASE_URL}/v1/places` and renders a short link at `/p/{shortId}`, which hydrates from `GET /v1/places/{shortId}`.
 
 The whole UI is driven by a `STATUS` state machine (`types/index.ts`) plus a separate `screen` enum (`loading | notfound | noresults | result | share`). `LOCATION_NOT_FOUND` → `notfound`, `NO_RESULTS_FOUND` → `noresults` — two intentionally distinct screens.
 
@@ -25,6 +27,7 @@ The whole UI is driven by a `STATUS` state machine (`types/index.ts`) plus a sep
 | Language | TypeScript, React 19 |
 | Data Fetching | [`@tanstack/react-query`](https://tanstack.com/query) (all API calls — see `shared/api.ts` and `shared/queries.ts`) |
 | Maps | Apple MapKit JS via [`mapkit-react`](https://github.com/Nicolapps/mapkit-react) |
+| Animation | [`motion`](https://motion.dev/) (Framer Motion) — result-card swipe gestures |
 | Error Tracking | Bugsnag (production only, via `ErrorBoundary`) |
 | Analytics | Umami + Google Analytics (production only) |
 | Styling | Vanilla CSS, Google Fonts (Archivo, Inter, JetBrains Mono) |
@@ -41,27 +44,29 @@ components/
   Map.tsx            # State machine, geolocation, POI search, directions, screen routing
   Header.tsx         # App header
   LoadingScreen.tsx  # Loading state with rotating witty messages
-  NotFoundScreen.tsx # "We lost you" — geolocation failed: AddressSearch, retry geolocation, curated neighborhood grid (stubbed)
+  NotFoundScreen.tsx # "We lost you" (geolocation failed) AND the "change location" changer (variant prop): AddressSearch, retry/use-my-location, curated neighborhood grid (stubbed)
   NoResultsScreen.tsx# "All out" — location is fine but no spots left nearby: "Start over" (clears rejections) + AddressSearch
   AddressSearch.tsx  # Shared mapkit.Search autocomplete input with staged "Use this →" confirm; used by NotFound + NoResults
   DistrictGrid.tsx   # Renders a list of districts as <DistrictTile>s
   DistrictTile.tsx   # Single neighborhood tile (number / city / name / sub) — exports the `District` type
   DownScreen.tsx     # "BACK SOON." — rendered when /v1/health is down or /v1/token fails
-  ResultScreen.tsx   # Pick details, route, "Take me there" map-app picker
+  ResultScreen.tsx   # Two phases: swipe deck (cards, no map; photo or map-filler) → picked results + map ("Pick again" returns)
   ShareScreen.tsx    # POSTs place to API, builds short link + share tiles
   Overlay.tsx        # Status overlay
   ErrorBoundary.tsx  # Bugsnag in prod, console in dev
 shared/
   api.ts             # Typed fetchers for all API endpoints (health, token, feature flags, places, recommendations)
-  queries.ts         # React Query hooks: useHealthQuery, useTokenQuery, useFeatureFlag(s)Query, useRecommendationQuery, useSharedPlaceQuery, useCreateSharedPlaceMutation
+  queries.ts         # React Query hooks: useHealthQuery, useTokenQuery, useFeatureFlag(s)Query, useSharedPlaceQuery, useCreateSharedPlaceMutation
+  recommendationHydration.ts # toPlace() slim adapter + hydrateRecommendation() (MapKit PlaceLookup, 4s fallback)
   queryClient.ts     # makeQueryClient() — shared QueryClient defaults
   constants.ts       # Loading lines and rejection messages
-  hooks/             # useIsDev (gates analytics + bugsnag in dev)
+  hooks/             # useIsDev (analytics/bugsnag gate); useRecommendationQueue (prefetch buffer of hydrated picks)
   utils/
     index.ts         # Barrel: re-exports track + session helpers
     track.ts         # Umami event helper (no-ops if script not loaded)
     session.ts       # Per-visit session counters surfaced via session_summary
-    rejections.ts    # localStorage-backed rejection store (growing TTL: 1d → 30d) sent as excludedPlaceIds
+    rejections.ts    # localStorage-backed rejection store (growing TTL: 1d → 30d) sent as excludedPlaceIds (legacy entries still honored; no longer written)
+    softSkips.ts     # session-only soft-skip set (no TTL) also sent as excludedPlaceIds
 types/
   index.ts           # STATUS enum (state machine)
   mapkit.d.ts        # MapKit type declarations
@@ -173,12 +178,14 @@ Custom events are emitted through the helper at `shared/utils/track.ts`, which s
 | `shared_place_viewed` | `/p/[id]` resolved successfully | `{ id }` |
 | `shared_place_not_found` | `/p/[id]` 404 / fetch error | `{ id }` |
 | `shared_place_cta_clicked` | CTA on `/p/[id]` clicked | `{ cta, id?, from? }` |
-| `results_found` | `/v1/recommendations` returned a pick | `{ source }` (`top_pick` or `mapkit`) |
-| `no_results_found` | recommendation call returned 404 or errored | — |
+| `no_results_found` | buffer drained and the server has nothing left nearby | — |
 | `noresults_reset` | "Start over" on the No Results screen (clears rejections/skips, re-rolls) | — |
-| `pick_shown` | a random pick is rendered (fires for every pick, including re-rolls) | `{ pickNumber }` |
-| `pick_rejected` | "That's awful" clicked | `{ pickNumber }` |
-| `wrong_location_clicked` | "Wrong location" clicked | — |
+| `pick_shown` | a random pick is rendered (fires for every pick, including re-rolls) | `{ pickNumber, source }` |
+| `pick_swiped` | swipe card flung past threshold | `{ direction }` (`skip` or `accept`) |
+| `pick_accepted` | a card accepted (swipe right / "I'm in") — reveals map + results | `{ pickNumber, source }` |
+| `pick_again_clicked` | "← Pick again" from the results view (back to the deck) | — |
+| `change_location_clicked` | header city indicator tapped to open the changer | — |
+| `change_location_cancelled` | "← Back to picks" from the changer | — |
 | `manual_location_lookup` | user submits an address | — |
 | `manual_location_lookup_failed` | geocoder couldn't resolve it | — |
 | `autocomplete_suggestion_selected` | user picks an autocomplete result in `AddressSearch` | `{ kind, context }` (`kind`: address / transit / area; `context`: notfound / noresults) |
