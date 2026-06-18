@@ -70,6 +70,21 @@ function formatDistanceMi(meters: number): string {
   return mi < 0.1 ? `${(meters / 0.3048).toFixed(0)} FT` : `${mi.toFixed(1)} MI`;
 }
 
+// True once mounted on a desktop-width viewport. Starts false so static-export
+// markup never assumes a desktop, and so mobile never instantiates desktop-only
+// widgets (e.g. the blurred background MapKit map). Matches the CSS breakpoint.
+function useIsDesktop(): boolean {
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 769px)");
+    const update = () => setIsDesktop(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return isDesktop;
+}
+
 // Straight-line distance — used on the swipe cards so we don't fire a Directions
 // call per browsed pick (the driving distance is computed once a card is picked).
 function haversineMeters(
@@ -234,12 +249,18 @@ function SwipeDeck({
   const info = getPlaceInfo(place, recommendation);
   const isTopPick = recommendation?.source === "top_pick";
   const bgCenter = userCoordinates ?? place.coordinate;
+  // The blurred background map is desktop-only (its container is `display:none`
+  // on mobile). MapKit JS can't initialize inside a `display:none` element and
+  // throws on mobile Safari, blanking the deck — so only mount it on desktop.
+  const isDesktop = useIsDesktop();
 
   return (
     <div
       className={`swipe-deck${isTopPick ? " swipe-deck--toppick" : ""}`}
     >
-      <DeckBackgroundMap token={token} center={bgCenter} isTopPick={isTopPick} />
+      {isDesktop && (
+        <DeckBackgroundMap token={token} center={bgCenter} isTopPick={isTopPick} />
+      )}
 
       <div className="swipe-stack">
         {peek && (
