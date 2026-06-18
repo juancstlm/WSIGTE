@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchRecommendation, type RecommendationResult } from "../api";
+import { fetchRecommendations, type RecommendationResult } from "../api";
 import { getActiveExcludedIds } from "../utils/rejections";
 import { getSoftSkippedIds } from "../utils/softSkips";
 import { hydrateRecommendation } from "../recommendationHydration";
@@ -34,11 +34,12 @@ export interface RecommendationQueue {
   reset: () => void;
 }
 
-// A client-side buffer of pre-fetched, pre-hydrated recommendations. The
-// backend serves one pick per call, so the buffer is filled by repeated calls
-// that exclude everything already buffered (plus the user's rejections/skips),
-// guaranteeing distinct picks. Refilling runs in the background off the
-// critical path, so promoting the next card on a swipe is instant.
+// A client-side buffer of pre-fetched, pre-hydrated recommendations. The backend
+// serves a batch of distinct picks per call, so the buffer is filled by asking
+// for the current deficit (QUEUE_TARGET minus what's buffered) in one round-trip,
+// excluding everything already buffered (plus the user's rejections/skips).
+// Refilling runs in the background off the critical path, so promoting the next
+// card on a swipe is instant.
 export function useRecommendationQueue({
   latitude,
   longitude,
@@ -65,44 +66,47 @@ export function useRecommendationQueue({
     if (fillingRef.current) return;
     const { latitude: lat, longitude: lng } = coordsRef.current;
     if (lat === undefined || lng === undefined) return;
-    if (bufferRef.current.length >= QUEUE_TARGET) return;
+    const deficit = QUEUE_TARGET - bufferRef.current.length;
+    if (deficit <= 0) return;
 
     fillingRef.current = true;
     setFilling(true);
     const gen = generationRef.current;
 
     try {
-      while (bufferRef.current.length < QUEUE_TARGET) {
-        const excludedPlaceIds = Array.from(
-          new Set([
-            ...getActiveExcludedIds(),
-            ...getSoftSkippedIds(),
-            ...bufferRef.current.map((e) => e.place.id),
-          ])
-        );
+      const excludedPlaceIds = Array.from(
+        new Set([
+          ...getActiveExcludedIds(),
+          ...getSoftSkippedIds(),
+          ...bufferRef.current.map((e) => e.place.id),
+        ])
+      );
 
-        let rec: RecommendationResult | null;
-        try {
-          rec = await fetchRecommendation({
-            latitude: coordsRef.current.latitude!,
-            longitude: coordsRef.current.longitude!,
-            excludedPlaceIds,
-          });
-        } catch {
-          // Transient network/server error — stop now, a later trigger retries.
-          break;
-        }
-        if (gen !== generationRef.current) return; // reset happened mid-flight
+      let recs: RecommendationResult[];
+      try {
+        recs = await fetchRecommendations({
+          latitude: lat,
+          longitude: lng,
+          excludedPlaceIds,
+          limit: deficit,
+        });
+      } catch {
+        // Transient network/server error — stop now, a later trigger retries.
+        return;
+      }
+      if (gen !== generationRef.current) return; // reset happened mid-flight
 
-        if (!rec) {
-          // Nothing left nearby. Only "exhausted" if we have nothing to show.
-          setExhausted(bufferRef.current.length === 0);
-          break;
-        }
+      if (!recs.length) {
+        // Nothing left nearby. Only "exhausted" if we have nothing to show.
+        setExhausted(bufferRef.current.length === 0);
+        return;
+      }
 
+      // Hydrate sequentially, committing each so the head card shows as soon as
+      // it's ready rather than waiting on the whole batch.
+      for (const rec of recs) {
         const place = await hydrateRecommendation(rec);
         if (gen !== generationRef.current) return;
-
         setExhausted(false);
         commitBuffer([...bufferRef.current, { recommendation: rec, place }]);
       }

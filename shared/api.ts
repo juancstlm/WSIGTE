@@ -154,23 +154,13 @@ export interface FetchRecommendationParams {
   latitude: number;
   longitude: number;
   excludedPlaceIds: string[];
+  // How many distinct picks to fetch in one call (fills the card stack). Default 1.
+  limit?: number;
 }
 
-// Returns null when the server replies 404 ("no recommendations available" —
-// e.g. nothing within ~60 mi after excluding what the user already rejected).
-// Other errors throw ApiError.
-export async function fetchRecommendation(
-  params: FetchRecommendationParams
-): Promise<RecommendationResult | null> {
-  const res = await fetch(`${API_BASE_URL}/v1/recommendations`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-  });
-  if (res.status === 404) return null;
-  if (!res.ok) throw await readApiError(res, "recommendation fetch failed");
-  const data = (await res.json()) as { recommendation?: Partial<RecommendationResult> };
-  const r = data?.recommendation;
+function parseRecommendation(
+  r: Partial<RecommendationResult> | undefined | null
+): RecommendationResult | null {
   if (
     !r ||
     typeof r.appleMapsPlaceId !== "string" ||
@@ -178,7 +168,7 @@ export async function fetchRecommendation(
     typeof r.latitude !== "number" ||
     typeof r.longitude !== "number"
   ) {
-    throw new ApiError(res.status, "recommendation response is malformed");
+    return null;
   }
   return {
     appleMapsPlaceId: r.appleMapsPlaceId,
@@ -190,6 +180,39 @@ export async function fetchRecommendation(
     source: r.source === "top_pick" ? "top_pick" : "mapkit",
     ...readEnrichment(r),
   };
+}
+
+// Returns a batch of recommendations (up to `limit`). Empty array when the server
+// replies 404 ("no recommendations available" — e.g. nothing within ~60 mi after
+// excluding what the user already rejected). Other errors throw ApiError.
+// Falls back to the legacy single `recommendation` field if `recommendations` is
+// absent, so it works against both old and new server builds.
+export async function fetchRecommendations(
+  params: FetchRecommendationParams
+): Promise<RecommendationResult[]> {
+  const res = await fetch(`${API_BASE_URL}/v1/recommendations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (res.status === 404) return [];
+  if (!res.ok) throw await readApiError(res, "recommendation fetch failed");
+  const data = (await res.json()) as {
+    recommendations?: Array<Partial<RecommendationResult>>;
+    recommendation?: Partial<RecommendationResult>;
+  };
+  const raw = Array.isArray(data?.recommendations)
+    ? data.recommendations
+    : data?.recommendation
+      ? [data.recommendation]
+      : [];
+  const parsed = raw
+    .map(parseRecommendation)
+    .filter((r): r is RecommendationResult => r !== null);
+  if (raw.length && !parsed.length) {
+    throw new ApiError(res.status, "recommendation response is malformed");
+  }
+  return parsed;
 }
 
 function readEnrichment(r: Partial<PlaceEnrichment>): PlaceEnrichment {
