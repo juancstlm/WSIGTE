@@ -15,13 +15,14 @@ const REJECT_OVERLAY_MS = 1700;
 const SKIP_OVERLAY_MS = 900;
 import { useFeatureFlagsExposure, useRecommendationQuery } from "../shared/queries";
 import { bumpSession, track } from "../shared/utils";
-import { recordRejection } from "../shared/utils/rejections";
-import { recordSoftSkip } from "../shared/utils/softSkips";
+import { recordRejection, clearRejections } from "../shared/utils/rejections";
+import { recordSoftSkip, clearSoftSkips } from "../shared/utils/softSkips";
 import { REJECTIONS, SOFT_SKIP_LINES, TOP_PICK_REJECTIONS } from "../shared/constants";
 import type { RecommendationResult } from "../shared/api";
 import { Header } from "./Header";
 import { LoadingScreen } from "./LoadingScreen";
 import { NotFoundScreen } from "./NotFoundScreen";
+import { NoResultsScreen } from "./NoResultsScreen";
 import { ResultScreen } from "./ResultScreen";
 import { ShareScreen } from "./ShareScreen";
 
@@ -29,7 +30,7 @@ interface MapProps {
   token: string;
 }
 
-type Screen = "loading" | "notfound" | "result" | "share";
+type Screen = "loading" | "notfound" | "noresults" | "result" | "share";
 
 // Adapts the server's slim payload into a mapkit.Place-shaped object so the
 // rest of the UI (ResultScreen, ShareScreen) keeps working unchanged. Only the
@@ -458,11 +459,10 @@ const Map = ({ token }: MapProps) => {
         if (prev !== "loading") loadingStartedAt.current = Date.now();
         return "loading";
       });
-    } else if (
-      status === STATUS.LOCATION_NOT_FOUND ||
-      status === STATUS.NO_RESULTS_FOUND
-    ) {
+    } else if (status === STATUS.LOCATION_NOT_FOUND) {
       setScreen("notfound");
+    } else if (status === STATUS.NO_RESULTS_FOUND) {
+      setScreen("noresults");
     }
   }, [status]);
 
@@ -543,7 +543,25 @@ const Map = ({ token }: MapProps) => {
     setStatus(STATUS.LOCATION_NOT_FOUND);
   };
 
-  const needsHiddenMap = screen === "loading" || screen === "notfound";
+  // "Start over" from the out-of-results screen: the dry spell is usually the
+  // user's own rejections/skips piling into the excluded list, so wipe that
+  // history and re-roll from the same coordinates.
+  const handleReset = () => {
+    if (!userCoordinates) return;
+    track("noresults_reset");
+    clearRejections();
+    clearSoftSkips();
+    setRandomPlace(undefined);
+    setActiveRecommendation(null);
+    setNextHydratedPlace(null);
+    setRoutePoints([]);
+    setRouteInfo(null);
+    setRejectionVersion((v) => v + 1);
+    setStatus(STATUS.LOOKING_FOR_RESULTS);
+  };
+
+  const needsHiddenMap =
+    screen === "loading" || screen === "notfound" || screen === "noresults";
   const isTopPickResult =
     screen === "result" && activeRecommendation?.source === "top_pick";
 
@@ -573,6 +591,14 @@ const Map = ({ token }: MapProps) => {
             isManualLookup.current = false;
             setStatus(STATUS.GETTING_YOUR_LOCATION);
           }}
+          userCoordinates={userCoordinates}
+        />
+      )}
+
+      {screen === "noresults" && (
+        <NoResultsScreen
+          onSearch={geocoderLookup}
+          onReset={handleReset}
           userCoordinates={userCoordinates}
         />
       )}
