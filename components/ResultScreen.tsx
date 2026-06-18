@@ -108,6 +108,19 @@ function formatDriveMinutes(seconds: number): string {
   return `${mins} MIN DRIVE`;
 }
 
+// Pretty-print US/NANP numbers; leave anything else (international) untouched.
+function formatPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits.startsWith("1")) {
+    const d = digits.slice(1);
+    return `+1 (${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+  }
+  return raw;
+}
+
 function formatHourMinute(hhmm: string): string {
   // "1430" → "2:30pm", "2200" → "10pm". Returns "" on malformed input.
   if (!/^\d{4}$/.test(hhmm)) return "";
@@ -534,6 +547,7 @@ function DeckBackgroundMap({
           isScrollEnabled={false}
           isZoomEnabled={false}
           isRotationEnabled={false}
+          showsCompass={0}
           showsMapTypeControl={false}
           showsZoomControl={false}
           showsUserLocationControl={false}
@@ -569,6 +583,7 @@ function CardLocationMap({
         isScrollEnabled={false}
         isZoomEnabled={false}
         isRotationEnabled={false}
+        showsCompass={0}
         showsMapTypeControl={false}
         showsZoomControl={false}
         showsUserLocationControl={false}
@@ -699,7 +714,7 @@ function ResultMedia({
   };
 
   return (
-    <div className="result-map-inner result-media" ref={viewportRef}>
+    <div className="result-media" ref={viewportRef}>
       <motion.div
         className="result-media-track"
         style={{ x }}
@@ -723,6 +738,7 @@ function ResultMedia({
               isScrollEnabled={slideCount === 1}
               isZoomEnabled={slideCount === 1}
               isRotationEnabled={slideCount === 1}
+              showsCompass={0}
               showsMapTypeControl={false}
               showsZoomControl={false}
               onLoad={onMapLoad}
@@ -775,7 +791,8 @@ function ResultMedia({
         ))}
       </motion.div>
 
-      {/* Pinned over the whole carousel so it stays put on every slide. */}
+      {/* Map context chips — shown over the map on the desktop two-pane layout
+          (hidden on mobile, where the name lives in the sheet). */}
       <div className="result-map-chips">
         <span className="chip chip--white">📍 You</span>
         <span
@@ -836,9 +853,49 @@ function ResultDetail({
   const hoursBlurb = formatHoursBlurb(info.hours, info.openNow);
   const isTopPick = recommendation?.source === "top_pick";
 
+  // Status chips (pick number / open-closed / share). They live in the content
+  // card on both layouts; the map shows the You/place/drive context chips.
+  const headerChips = (
+    <>
+      {isTopPick ? (
+        <span className="chip chip--toppick">★ Top Pick</span>
+      ) : (
+        <span className="chip chip--muted">
+          Pick №{String(pickNumber).padStart(3, "0")}
+        </span>
+      )}
+      <div className="result-card-header-right">
+        {openNow === true && (
+          <span className="chip chip--green">● Open now</span>
+        )}
+        {openNow === false && (
+          <span className="chip chip--muted">● Closed</span>
+        )}
+        {shareEnabled && (
+          <button
+            className="btn-share"
+            onClick={() => {
+              track("share_clicked");
+              onShare();
+            }}
+          >
+            ↗ Share
+          </button>
+        )}
+      </div>
+    </>
+  );
+
   return (
-    <div className={`result-layout${isTopPick ? " result-layout--toppick" : ""}`}>
-      <div className="result-map-area">
+    <div
+      className={`result-layout result-layout--sheet${
+        isTopPick ? " result-layout--toppick" : ""
+      }`}
+    >
+      {/* Mobile: full-bleed photo/map hero. Desktop: a floating rounded map
+          card. The You/place/drive context chips sit over the map; status chips
+          live in the content card below. */}
+      <div className="result-hero">
         <ResultMedia
           place={place}
           name={info.name}
@@ -856,34 +913,7 @@ function ResultDetail({
       </div>
 
       <div className="result-card">
-        <div className="result-card-header">
-          {isTopPick ? (
-            <span className="chip chip--toppick">★ Top Pick</span>
-          ) : (
-            <span className="chip chip--muted">
-              Pick №{String(pickNumber).padStart(3, "0")}
-            </span>
-          )}
-          <div className="result-card-header-right">
-            {openNow === true && (
-              <span className="chip chip--green">● Open now</span>
-            )}
-            {openNow === false && (
-              <span className="chip chip--muted">● Closed</span>
-            )}
-            {shareEnabled && (
-              <button
-                className="btn-share"
-                onClick={() => {
-                  track("share_clicked");
-                  onShare();
-                }}
-              >
-                ↗ Share
-              </button>
-            )}
-          </div>
-        </div>
+        <div className="result-card-header">{headerChips}</div>
 
         <div className="result-headline">
           GO EAT<br />
@@ -911,6 +941,11 @@ function ResultDetail({
               {formatDistanceMi(routeInfo.distanceMeters)}
             </span>
           )}
+          {routeInfo && (
+            <span className="chip chip--card">
+              {formatDriveMinutes(routeInfo.durationSeconds)}
+            </span>
+          )}
         </div>
 
         <div className="result-details-grid">
@@ -920,7 +955,15 @@ function ResultDetail({
           </div>
           <div>
             <div className="detail-label">Phone</div>
-            <div className="detail-value">{info.phone}</div>
+            <div className="detail-value">
+              {info.phone && info.phone !== "N/A" ? (
+                <a href={`tel:${info.phone.replace(/[^\d+]/g, "")}`}>
+                  {formatPhone(info.phone)}
+                </a>
+              ) : (
+                info.phone
+              )}
+            </div>
           </div>
           <div>
             <div className="detail-label">Website</div>
@@ -954,8 +997,6 @@ function ResultDetail({
             </div>
           </div>
         )}
-
-        <div style={{ flex: 1 }} />
 
         <div className="detail-actions">
           <div className="map-picker-wrapper" ref={mapPickerRef}>

@@ -724,37 +724,53 @@ a { color: var(--accent); text-decoration: underline; }
 }
 
 /* ── Result Screen ──────────────────────────── */
+/* The picked view: a full-bleed media hero with the headline/chips overlaid,
+   then a rounded content sheet that overlaps the media's bottom edge — the whole
+   thing scrolls as one surface. */
 .result-layout {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: 1.3fr 1fr;
-  grid-template-rows: 1fr;
+  height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: var(--bg);
   position: relative;
 }
 
-.result-map-area {
-  position: relative;
-  padding: var(--space-6);
-}
-
-.result-map-inner {
-  position: absolute;
-  inset: var(--space-6);
-  border-radius: var(--radius-xl);
+.result-hero {
+  /* Sticky so the content sheet slides up and over the pinned photo/map as the
+     page scrolls (mobile). Desktop overrides this to a static two-pane column. */
+  position: sticky;
+  top: 0;
+  flex: 0 0 auto;
+  height: min(58vh, 480px);
   overflow: hidden;
-  box-shadow: 0 24px 48px rgba(0,0,0,0.12), 0 1px 0 rgba(0,0,0,0.04);
+  background: #1a1a1a;
 }
 
+.result-hero .result-media {
+  position: absolute;
+  inset: 0;
+}
+
+/* Dots sit at the bottom of the map, clear of the top-left context chips (and,
+   on mobile, above the content sheet's overlap). */
+.result-hero .result-media-dots {
+  top: auto;
+  bottom: var(--space-8);
+}
+
+/* Map context chips (You / place / drive) over the map, on both layouts. The
+   status chips (pick / open-closed) live in the content card instead. */
 .result-map-chips {
+  display: flex;
   position: absolute;
   top: var(--space-4);
   left: var(--space-4);
-  display: flex;
   gap: var(--space-1_5);
   flex-wrap: wrap;
   z-index: 2;
+  pointer-events: none;
 }
 
 /* The two result phases (deck / picked detail) overlap here so AnimatePresence
@@ -774,11 +790,16 @@ a { color: var(--accent); text-decoration: underline; }
 }
 
 .result-card {
+  position: relative;
+  z-index: 4;
+  margin-top: calc(-1 * var(--radius-2xl));
+  border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+  background: var(--bg);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.10);
   padding: var(--space-6) var(--space-7) var(--space-7);
   display: flex;
   flex-direction: column;
   gap: var(--space-3_5);
-  overflow: auto;
 }
 
 /* Picked-view hero: a swipeable carousel of the route map + the Yelp photo. */
@@ -824,10 +845,6 @@ a { color: var(--accent); text-decoration: underline; }
   /* Keep the carousel drag from being hijacked by native image-drag/selection. */
   -webkit-user-drag: none;
   user-select: none;
-}
-
-.result-media .result-map-chips {
-  pointer-events: none;
 }
 
 .result-media-dots {
@@ -889,6 +906,66 @@ a { color: var(--accent); text-decoration: underline; }
 @media (min-width: 769px) {
   .swipe-deck-bg {
     display: block;
+  }
+
+  /* On wide screens the picked view is a two-pane split: a floating rounded map
+     card on the left, scrolling details on the right (the page itself doesn't
+     scroll). */
+  .result-layout--sheet {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    grid-template-rows: 100%;
+    overflow: hidden;
+  }
+
+  .result-layout--sheet .result-hero {
+    height: 100%;
+    min-height: 0;
+    background: var(--bg);
+    /* Let the floating map card's shadow render in the inset gap (instead of
+       being clipped) and fall over the content pane. */
+    overflow: visible;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* The map floats as a rounded, shadowed card inset from the pane edges. */
+  .result-layout--sheet .result-media {
+    inset: var(--space-6);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12), 0 1px 0 rgba(0, 0, 0, 0.04);
+  }
+
+  /* Right pane: details sit flush (no mobile overlap) and scroll on their own.
+     Sits below the hero so the map card's shadow falls onto it. */
+  .result-layout--sheet .result-card {
+    margin-top: 0;
+    border-radius: 0;
+    box-shadow: none;
+    overflow-y: auto;
+    min-height: 0;
+    z-index: 0;
+    padding: var(--space-7) var(--space-8) var(--space-8);
+  }
+
+  /* Details become a white, rounded, two-column card (the previous desktop
+     look). Excluded for top picks, whose detail text is white. */
+  .result-layout--sheet:not(.result-layout--toppick) .result-details-grid {
+    background: var(--card);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+  }
+
+  .result-layout--sheet .result-details-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4) var(--space-5);
+  }
+
+  .result-layout--sheet .result-details-grid > div {
+    padding: 0;
+    border-bottom: none;
   }
 }
 
@@ -1253,16 +1330,26 @@ a { color: var(--accent); text-decoration: underline; }
   flex-wrap: wrap;
 }
 
+/* A clean hairline-divided list — no white card-in-card. */
 .result-details-grid {
-  background: var(--card);
-  border-radius: var(--radius-lg);
-  padding: var(--space-4);
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-3_5);
+  grid-template-columns: 1fr;
+  gap: 0;
   font-family: var(--body);
   font-size: var(--t-p2-size);
-  box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+}
+
+.result-details-grid > div {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.result-details-grid > div:first-child {
+  padding-top: 0;
+}
+
+.result-details-grid > div:last-child {
+  border-bottom: none;
 }
 
 .detail-label {
@@ -1754,6 +1841,12 @@ a { color: var(--accent); text-decoration: underline; }
     padding: var(--space-3) var(--space-4_5);
   }
 
+  /* Keep the mobile sheet clean — the "final answer" line is a desktop-only
+     flourish; on mobile only top picks get their subtext. */
+  .result-layout--sheet:not(.result-layout--toppick) .result-subtext {
+    display: none;
+  }
+
   .header-title {
     font-size: var(--t-h2-size);
   }
@@ -1765,20 +1858,6 @@ a { color: var(--accent); text-decoration: underline; }
 
   .header-location-label {
     max-width: 130px;
-  }
-
-  .result-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-  }
-
-  .result-map-area {
-    padding: var(--space-3_5);
-    height: 280px;
-  }
-
-  .result-map-inner {
-    inset: var(--space-3_5);
   }
 
   .result-card {
@@ -1988,20 +2067,11 @@ body:has(.app-root--toppick) {
   color: #fff;
 }
 
-.result-layout--toppick .result-map-inner {
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
-}
-
-.result-layout--toppick .result-map-chips .chip {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
 .result-layout--toppick .result-card {
   background: var(--tp-bg);
 }
 
+/* On the dark top-pick sheet the headline is white with a gold place-name span. */
 .result-layout--toppick .result-headline {
   color: #fff;
 }
@@ -2020,10 +2090,8 @@ body:has(.app-root--toppick) {
   border: 1px solid var(--tp-hairline);
 }
 
-.result-layout--toppick .result-details-grid {
-  background: var(--tp-card);
-  border: 1px solid var(--tp-hairline);
-  box-shadow: none;
+.result-layout--toppick .result-details-grid > div {
+  border-bottom-color: var(--tp-hairline);
 }
 
 .result-layout--toppick .detail-label {
