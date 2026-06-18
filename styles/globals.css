@@ -937,6 +937,43 @@ a { color: var(--accent); text-decoration: underline; }
     box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12), 0 1px 0 rgba(0, 0, 0, 0.04);
   }
 
+  /* Top pick: carry the deck card's shimmer border + underside gold glow onto
+     the floating map card so the special treatment continues here. */
+  .result-layout--toppick .result-media {
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4),
+      0 0 26px rgba(196, 150, 12, 0.3),
+      0 32px 56px -10px rgba(196, 150, 12, 0.5);
+  }
+
+  .result-layout--toppick .result-media::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    border-radius: inherit;
+    padding: 2.5px;
+    background: conic-gradient(
+      from var(--tp-angle),
+      var(--tp-gold) 0deg,
+      var(--tp-gold) 70deg,
+      #f6d58a 100deg,
+      #fff7e0 120deg,
+      #f6d58a 140deg,
+      var(--tp-gold) 170deg,
+      var(--tp-gold) 360deg
+    );
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* Desktop puts the glow on the map card, so cancel the mobile sheet glow. */
+  .result-layout--toppick .result-card {
+    box-shadow: none;
+  }
+
   /* Right pane: details sit flush (no mobile overlap) and scroll on their own.
      Sits below the hero so the map card's shadow falls onto it. */
   .result-layout--sheet .result-card {
@@ -1244,6 +1281,71 @@ a { color: var(--accent); text-decoration: underline; }
 .swipe-deck--toppick .btn-next {
   color: #fff;
   border-color: var(--tp-hairline);
+}
+
+/* Animated gold shimmer border on the active top-pick card (not the blurred peek
+   behind it). A gold ring drawn on a pseudo-element and masked to just the
+   border; a bright highlight travels *around* the perimeter by rotating a conic
+   gradient via the registered --tp-angle property. Pure CSS — no library. */
+@property --tp-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.swipe-deck--toppick .swipe-card:not(.swipe-peek-card) {
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4),
+    0 0 28px rgba(196, 150, 12, 0.35),
+    /* Gold light pooling under the card — offset down, negative spread keeps
+       it concentrated along the underside. */
+    0 34px 60px -10px rgba(196, 150, 12, 0.55);
+}
+
+.swipe-deck--toppick .swipe-card:not(.swipe-peek-card)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border-radius: inherit;
+  padding: 2.5px;
+  /* Whole ring stays gold; a brighter "comet" sweeps round as --tp-angle spins. */
+  background: conic-gradient(
+    from var(--tp-angle),
+    var(--tp-gold) 0deg,
+    var(--tp-gold) 70deg,
+    #f6d58a 100deg,
+    #fff7e0 120deg,
+    #f6d58a 140deg,
+    var(--tp-gold) 170deg,
+    var(--tp-gold) 360deg
+  );
+  /* Knock out the interior so only the border ring paints. */
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .swipe-deck--toppick .swipe-card:not(.swipe-peek-card)::before {
+    animation: tp-shimmer 2.6s linear infinite;
+  }
+}
+
+/* The detail view's floating map card shares the same shimmer (desktop only —
+   that's where the map renders as a rounded card). Combined query since CSS
+   media queries don't nest. */
+@media (min-width: 769px) and (prefers-reduced-motion: no-preference) {
+  .result-layout--toppick .result-media::before {
+    animation: tp-shimmer 2.6s linear infinite;
+  }
+}
+
+@keyframes tp-shimmer {
+  to {
+    --tp-angle: 360deg;
+  }
 }
 
 /* ---- Picked phase: results + map actions ---- */
@@ -2040,6 +2142,73 @@ body:has(.app-root--toppick) {
   background: #15130F;
 }
 
+/* Top Pick fanfare — the one-shot interstitial that plays the moment a top pick
+   surfaces in the deck (see components/TopPickReveal.tsx). Covers the whole
+   viewport over the gold card, then clears. */
+.top-pick-reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  overflow: hidden;
+  background: radial-gradient(
+    circle at 50% 45%,
+    rgba(43, 37, 16, 0.92) 0%,
+    rgba(21, 19, 15, 0.96) 60%,
+    rgba(21, 19, 15, 0.99) 100%
+  );
+}
+
+.top-pick-reveal-burst {
+  position: absolute;
+  width: 62vmin;
+  height: 62vmin;
+  border-radius: var(--radius-circle);
+  background: radial-gradient(
+    circle,
+    rgba(246, 213, 138, 0.55) 0%,
+    rgba(196, 150, 12, 0.25) 40%,
+    transparent 70%
+  );
+  filter: blur(4px);
+}
+
+.top-pick-reveal-mark {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+
+.top-pick-reveal-star {
+  font-size: clamp(48px, 12vw, 96px);
+  line-height: 1;
+  color: var(--tp-gold, #c4960c);
+  text-shadow: 0 0 24px rgba(246, 213, 138, 0.6);
+}
+
+.top-pick-reveal-word {
+  font-family: var(--font-display);
+  font-weight: var(--weight-black);
+  font-size: clamp(40px, 11vw, 88px);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  background: linear-gradient(
+    135deg,
+    #f6d58a 0%,
+    var(--tp-gold, #c4960c) 50%,
+    #f6d58a 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
 .app-root--toppick .header {
   background: var(--tp-bg);
 }
@@ -2067,8 +2236,26 @@ body:has(.app-root--toppick) {
   color: #fff;
 }
 
+/* One-shot gold wash flashed over the detail view the instant a top pick is
+   accepted (see ResultDetail). Decorative; pointer-events off. */
+.result-toppick-wash {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 50% 42%,
+    rgba(246, 213, 138, 0.7) 0%,
+    rgba(196, 150, 12, 0.32) 35%,
+    transparent 70%
+  );
+}
+
 .result-layout--toppick .result-card {
   background: var(--tp-bg);
+  /* Mobile: gold light glows upward from the sheet's top edge where it meets the
+     hero photo. (Desktop nulls this — the glow lives on the floating map card.) */
+  box-shadow: 0 -10px 32px rgba(196, 150, 12, 0.3);
 }
 
 /* On the dark top-pick sheet the headline is white with a gold place-name span. */
@@ -2076,8 +2263,40 @@ body:has(.app-root--toppick) {
   color: #fff;
 }
 
+/* The gold place name gets a slow light-sweep so the headline feels alive. The
+   gradient base is solid gold, so reduced motion (no animation) leaves a plain
+   gold name. */
 .result-layout--toppick .result-headline span {
   color: var(--tp-gold);
+  background: linear-gradient(
+    100deg,
+    var(--tp-gold) 0%,
+    var(--tp-gold) 38%,
+    #fff7e0 50%,
+    var(--tp-gold) 62%,
+    var(--tp-gold) 100%
+  );
+  background-size: 220% 100%;
+  background-position: 130% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .result-layout--toppick .result-headline span {
+    animation: tp-text-sheen 3.6s ease-in-out infinite;
+  }
+}
+
+@keyframes tp-text-sheen {
+  0% {
+    background-position: 130% 0;
+  }
+  55%,
+  100% {
+    background-position: -30% 0;
+  }
 }
 
 .result-layout--toppick .result-subtext {
@@ -2088,6 +2307,13 @@ body:has(.app-root--toppick) {
   background: var(--tp-card);
   color: #fff;
   border: 1px solid var(--tp-hairline);
+}
+
+/* The white context chips sit over the (light) map even in top-pick mode, so
+   keep their text dark — otherwise they inherit the layout's white text and
+   vanish on the white pill. (The place-name chip sets its own gold color inline.) */
+.result-layout--toppick .result-map-chips .chip--white {
+  color: var(--ink);
 }
 
 .result-layout--toppick .result-details-grid > div {
@@ -2140,9 +2366,26 @@ body:has(.app-root--toppick) {
   text-transform: uppercase;
   padding: var(--space-1_5) var(--space-3);
   border-radius: var(--radius-pill);
-  background: linear-gradient(135deg, #C4960C, #D4A90E);
+  /* A bright highlight sweeps across the gold pill (same sheen language as the
+     headline). Static gold under reduced motion. */
+  background: linear-gradient(
+    100deg,
+    #c4960c 0%,
+    #d4a90e 40%,
+    #f6e3a0 50%,
+    #d4a90e 60%,
+    #c4960c 100%
+  );
+  background-size: 220% 100%;
+  background-position: 130% 0;
   color: #15130F;
   border: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .chip--toppick {
+    animation: tp-text-sheen 3.6s ease-in-out infinite;
+  }
 }
 
 /* "Why this is a top pick" callout */

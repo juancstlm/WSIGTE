@@ -129,7 +129,13 @@ export function useRecommendationQueue({
     commitBuffer([]);
     setFilling(false);
     setExhausted(false);
-  }, []);
+    // Start a fresh fill immediately rather than waiting on the topping-up
+    // effect. That effect only fires when its deps change, so clearing an
+    // already-empty buffer (e.g. on the initial location lock, where reset
+    // cancels the queue's very first fill) wouldn't restart fetching and the
+    // app would hang on the loading screen. consume() refills the same way.
+    void refill();
+  }, [refill]);
 
   // Keep the buffer topped up whenever it drops below target.
   useEffect(() => {

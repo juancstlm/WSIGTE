@@ -892,6 +892,18 @@ function ResultDetail({
         isTopPick ? " result-layout--toppick" : ""
       }`}
     >
+      {/* A one-shot gold wash that flashes over the layout the moment a top pick
+          is accepted (this view mounts) — rewards the commitment. */}
+      {isTopPick && (
+        <motion.div
+          className="result-toppick-wash"
+          aria-hidden
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 0.55, 0] }}
+          transition={{ duration: 0.9, times: [0, 0.3, 1], ease: "easeOut" }}
+        />
+      )}
+
       {/* Mobile: full-bleed photo/map hero. Desktop: a floating rounded map
           card. The You/place/drive context chips sit over the map; status chips
           live in the content card below. */}

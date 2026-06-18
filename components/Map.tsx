@@ -25,6 +25,7 @@ import { NotFoundScreen } from "./NotFoundScreen";
 import { NoResultsScreen } from "./NoResultsScreen";
 import { ResultScreen } from "./ResultScreen";
 import { ShareScreen } from "./ShareScreen";
+import { TopPickReveal } from "./TopPickReveal";
 
 interface MapProps {
   token: string;
@@ -106,6 +107,11 @@ const Map = ({ token }: MapProps) => {
   const pickNumberRef = useRef(0);
   const [rejecting, setRejecting] = useState(false);
   const [rejectionLine, setRejectionLine] = useState("");
+  // The pick number whose Top Pick fanfare interstitial is currently playing
+  // (null = none). `lastFanfarePickRef` dedupes so it never replays on a
+  // re-render or a "Pick again" return to the same card.
+  const [topPickFanfarePick, setTopPickFanfarePick] = useState<number | null>(null);
+  const lastFanfarePickRef = useRef(0);
 
   const handleMapLoad = useCallback(() => {
     setMapkitReady(true);
@@ -284,6 +290,15 @@ const Map = ({ token }: MapProps) => {
         source: head.recommendation.source,
       });
       bumpSession("picksShown");
+      // Celebrate a Top Pick surfacing in the deck — once per pick.
+      if (
+        head.recommendation.source === "top_pick" &&
+        lastFanfarePickRef.current !== nextPick
+      ) {
+        lastFanfarePickRef.current = nextPick;
+        setTopPickFanfarePick(nextPick);
+        track("top_pick_revealed", { pickNumber: nextPick });
+      }
     };
 
     if (randomPlace) {
@@ -660,6 +675,13 @@ const Map = ({ token }: MapProps) => {
           userCoordinates={userCoordinates}
           routePoints={routePoints}
           onClose={() => setScreen("result")}
+        />
+      )}
+
+      {topPickFanfarePick !== null && (
+        <TopPickReveal
+          key={topPickFanfarePick}
+          onDone={() => setTopPickFanfarePick(null)}
         />
       )}
     </div>
