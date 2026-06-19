@@ -410,8 +410,16 @@ a { color: var(--accent); text-decoration: underline; }
   border: none;
   outline: none;
   font-family: var(--body);
-  font-size: var(--t-p1-size);
+  /* 16px on mobile: iOS Safari auto-zooms when a focused input is < 16px. The
+     desktop override below restores the p1 token where zoom isn't a concern. */
+  font-size: 16px;
   color: var(--ink);
+}
+
+@media (min-width: 769px) {
+  .notfound-input {
+    font-size: var(--t-p1-size);
+  }
 }
 
 .notfound-input-clear {
@@ -1194,20 +1202,24 @@ a { color: var(--accent); text-decoration: underline; }
   pointer-events: none;
 }
 
+/* Stamps sit on the side opposite the swipe (the trailing edge) so the one being
+   revealed isn't dragged under the leading edge / the user's thumb. Accept shows
+   on a right swipe, so it lives on the left; skip shows on a left swipe, so it
+   lives on the right. */
 .swipe-stamp--accept {
-  right: var(--space-4_5);
+  left: var(--space-4_5);
   color: #18a558;
   border-color: #18a558;
   background: rgba(255, 255, 255, 0.14);
-  transform: rotate(12deg);
+  transform: rotate(-12deg);
 }
 
 .swipe-stamp--skip {
-  left: var(--space-4_5);
+  right: var(--space-4_5);
   color: #fff;
   border-color: #fff;
   background: rgba(0, 0, 0, 0.2);
-  transform: rotate(-12deg);
+  transform: rotate(12deg);
 }
 
 /* Skip + "I'm in" sit on one row, centered as a group. */
