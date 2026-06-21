@@ -372,8 +372,26 @@ function SwipeCard({
       SOFT_REJECT_LABELS[Math.floor(Math.random() * SOFT_REJECT_LABELS.length)],
     []
   );
-  const [imgFailed, setImgFailed] = useState(false);
-  const hasPhoto = !!info.photoUrl && !imgFailed;
+  // Photo gallery: tap left/right of the card to page through the place's photos. Mirrors the
+  // detail-view carousel's per-image failure handling (ResultMedia) — a broken URL drops out and
+  // the progress bars adjust.
+  const allPhotos = info.photos.length ? info.photos : info.photoUrl ? [info.photoUrl] : [];
+  const [failedPhotos, setFailedPhotos] = useState<Set<string>>(new Set());
+  const validPhotos = allPhotos.filter((p) => !failedPhotos.has(p));
+  const [photoIndex, setPhotoIndex] = useState(0);
+  const idx = Math.min(photoIndex, Math.max(0, validPhotos.length - 1));
+  const hasPhoto = validPhotos.length > 0;
+  const multi = validPhotos.length > 1;
+
+  // Tap nav. Motion suppresses the synthetic click after a real drag, so a horizontal swipe
+  // (card accept/reject) never triggers photo nav — only a clean tap does. Left half = previous,
+  // right half = next, clamped (no wrap). No-op with <2 photos, so single-photo cards are unchanged.
+  const onMediaClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!multi) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const goPrev = e.clientX - rect.left < rect.width / 2;
+    setPhotoIndex(() => Math.max(0, Math.min(validPhotos.length - 1, idx + (goPrev ? -1 : 1))));
+  };
 
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-300, 300], [-12, 12]);
@@ -434,20 +452,35 @@ function SwipeCard({
         className={`swipe-card-media${
           hasPhoto ? "" : " swipe-card-media--noimg"
         }`}
+        onClick={onMediaClick}
       >
         {hasPhoto ? (
           <img
             className="swipe-card-photo"
-            src={info.photoUrl!}
+            src={validPhotos[idx]}
             alt={info.name}
             loading="lazy"
-            onError={() => setImgFailed(true)}
+            draggable={false}
+            onError={() =>
+              setFailedPhotos((prev) => new Set(prev).add(validPhotos[idx]))
+            }
           />
         ) : (
           // No provider photo — fall back to a static map of the place as the visual.
           <CardLocationMap token={token} place={place} isTopPick={isTopPick} />
         )}
         <div className="swipe-card-scrim" />
+
+        {multi && (
+          <div className="swipe-card-progress" aria-hidden>
+            {validPhotos.map((src, i) => (
+              <span
+                key={src}
+                className={`swipe-card-progress-seg${i === idx ? " is-active" : ""}`}
+              />
+            ))}
+          </div>
+        )}
 
         <motion.div
           className="swipe-stamp swipe-stamp--accept"

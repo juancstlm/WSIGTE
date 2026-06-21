@@ -1118,6 +1118,35 @@ a { color: var(--accent); text-decoration: underline; }
   height: 100%;
   object-fit: cover;
   z-index: 0;
+  /* Block native image ghost-drag so it can't hijack the card's swipe gesture. */
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* Instagram/Tinder-style story bars: one segment per photo, current one filled.
+   Indicators only — tapping the photo's left/right half does the navigation. */
+.swipe-card-progress {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-3);
+  right: var(--space-3);
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.swipe-card-progress-seg {
+  flex: 1 1 0;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: background 0.2s ease;
+}
+
+.swipe-card-progress-seg.is-active {
+  background: #fff;
 }
 
 .swipe-card-map {
