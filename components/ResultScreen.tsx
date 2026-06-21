@@ -124,6 +124,7 @@ function formatPhone(raw: string): string {
 function formatHourMinute(hhmm: string): string {
   // "1430" → "2:30pm", "2200" → "10pm". Returns "" on malformed input.
   if (!/^\d{4}$/.test(hhmm)) return "";
+  if (hhmm === "2400") return "midnight"; // end-of-day sentinel (e.g. a 24h schedule)
   const hour = Number(hhmm.slice(0, 2));
   const min = hhmm.slice(2);
   const ampm = hour >= 12 ? "pm" : "am";
@@ -131,7 +132,7 @@ function formatHourMinute(hhmm: string): string {
   return min === "00" ? `${hour12}${ampm}` : `${hour12}:${min}${ampm}`;
 }
 
-// Pick the slot that applies right now (or the next-upcoming one today). Yelp `day`: Mon=0..Sun=6.
+// Pick the slot that applies right now (or the next-upcoming one today). `day`: Mon=0..Sun=6.
 function todaySlot(hours: HoursSlot[]): HoursSlot | null {
   const now = new Date();
   const yelpDow = (now.getDay() + 6) % 7;
@@ -145,7 +146,7 @@ function todaySlot(hours: HoursSlot[]): HoursSlot | null {
   );
 }
 
-// Server's `openNow` is a hint from Yelp at fetch time. If we have the schedule, prefer the
+// Server's `openNow` is a provider hint at fetch time. If we have the schedule, prefer the
 // client-clock derivation — it stays correct as the day advances even on a stale cache.
 function formatHoursBlurb(hours: HoursSlot[] | null, openNowHint: boolean | null): string | null {
   if (!hours || hours.length === 0) return openNowHint === false ? "Closed today" : null;
@@ -158,6 +159,8 @@ function formatHoursBlurb(hours: HoursSlot[] | null, openNowHint: boolean | null
     slot.day === yelpDow &&
     slot.start <= nowHhmm &&
     (slot.isOvernight || nowHhmm < slot.end);
+  // A full-day slot (00:00–24:00) is an always-open / 24-hour schedule.
+  if (slot.start === "0000" && slot.end === "2400") return "Open 24 hours";
   return openNow
     ? `Open · closes ${formatHourMinute(slot.end)}`
     : `Closed · opens ${formatHourMinute(slot.start)}`;
@@ -441,7 +444,7 @@ function SwipeCard({
             onError={() => setImgFailed(true)}
           />
         ) : (
-          // No Yelp photo — fall back to a static map of the place as the visual.
+          // No provider photo — fall back to a static map of the place as the visual.
           <CardLocationMap token={token} place={place} isTopPick={isTopPick} />
         )}
         <div className="swipe-card-scrim" />
@@ -558,7 +561,7 @@ function DeckBackgroundMap({
 }
 
 // A non-interactive map centered on the place, used as the card's visual when
-// there's no Yelp photo. Pointer-events are disabled in CSS so the card stays
+// there's no provider photo. Pointer-events are disabled in CSS so the card stays
 // draggable when the grab starts over the map.
 function CardLocationMap({
   token,
@@ -616,7 +619,7 @@ interface ResultMediaProps {
   onUserLocationError: (event?: UserLocationErrorEvent) => void;
 }
 
-// The hero area of the picked view: a swipeable carousel of [route map, ...Yelp
+// The hero area of the picked view: a swipeable carousel of [route map, ...provider
 // photos] (up to 3). When at least one photo exists the map is locked
 // (non-interactive, pointer-events off in CSS) so a horizontal drag swipes
 // between slides instead of panning the map; with no photo it's the lone,

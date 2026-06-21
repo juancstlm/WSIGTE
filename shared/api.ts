@@ -97,7 +97,7 @@ export async function fetchFeatureFlags(): Promise<FeatureFlags> {
 }
 
 export interface HoursSlot {
-  day: number; // Mon=0..Sun=6 (Yelp's convention)
+  day: number; // Mon=0..Sun=6. "HHMM" end of "2400" marks a full-day/24h slot.
   start: string; // "HHMM" 24h, in the place's local time
   end: string;
   isOvernight: boolean;
@@ -109,10 +109,11 @@ export interface PlaceEnrichment {
   priceLevel: string | null;
   openNow: boolean | null;
   hours: HoursSlot[] | null;
+  // Place URL (now the Google Maps URL; field name kept for backward compatibility). Not rendered.
   yelpUrl: string | null;
   phone: string | null;
   photoUrl: string | null;
-  // Up to 3 Yelp photo URLs (includes photoUrl). Empty when Yelp has no match.
+  // Up to 3 self-hosted photo URLs (includes photoUrl). Empty when the place has no provider match.
   photos: string[];
 }
 
